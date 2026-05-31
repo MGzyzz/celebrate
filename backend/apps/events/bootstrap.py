@@ -7,7 +7,17 @@ from apps.accounts.serializers import TelegramUserSerializer
 from apps.accounts.services import TelegramAuthError, upsert_telegram_user_from_init_data, validate_telegram_init_data
 from apps.events.models import Event, Participation
 from apps.fundraising.models import Fundraising, Invoice, PriceItem
-from apps.places.models import PlaceIdea
+from apps.places.models import PlaceIdea, PlaceVote
+
+
+_RU_MONTHS = [
+    "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+]
+
+
+def _ru_date(d) -> str:
+    return f"{d.day} {_RU_MONTHS[d.month - 1]} {d.year}"
 
 
 class BootstrapView(APIView):
@@ -41,15 +51,18 @@ class BootstrapView(APIView):
         fundraisings = list(event.fundraisings.all().order_by("-created_at"))
         active_fundraising = fundraisings[0] if fundraisings else None
 
+        user_voted_ids = self._compute_user_voted_ids(event, user)
+        invoice_map = self._build_invoice_map(active_fundraising)
+
         return Response(
             {
                 "user": TelegramUserSerializer(user).data,
                 "event": self._event_payload(event),
                 "me": self._me_payload(user, event),
-                "places": [self._place_payload(place, index, user) for index, place in enumerate(self._places(event))],
+                "places": [self._place_payload(place, index, user_voted_ids) for index, place in enumerate(self._places(event))],
                 "collections": [self._fundraising_payload(fundraising) for fundraising in fundraisings],
                 "items": [self._item_payload(item) for item in self._items(active_fundraising)],
-                "participants": [self._participant_payload(participation, active_fundraising) for participation in self._participants(event)],
+                "participants": [self._participant_payload(p, invoice_map.get(p.user_id)) for p in self._participants(event)],
                 "myInvoice": self._invoice_payload(user, active_fundraising),
             }
         )
@@ -76,7 +89,7 @@ class BootstrapView(APIView):
             "title": event.title,
             "school": event.group.name,
             "date": event.event_date.isoformat() if event.event_date else "",
-            "dateLabel": event.event_date.strftime("%d.%m.%Y") if event.event_date else "",
+            "dateLabel": _ru_date(event.event_date) if event.event_date else "",
             "payment": {
                 "phone": event.payment_phone,
                 "holder": event.payment_holder,
@@ -113,7 +126,19 @@ class BootstrapView(APIView):
         return event.place_ideas.annotate(votes_count=Count("votes")).order_by("-votes_count", "-created_at")
 
     @staticmethod
-    def _place_payload(place, index, user):
+    def _compute_user_voted_ids(event, user) -> set:
+        return set(
+            PlaceVote.objects.filter(place__event=event, user=user).values_list("place_id", flat=True)
+        )
+
+    @staticmethod
+    def _build_invoice_map(fundraising) -> dict:
+        if not fundraising:
+            return {}
+        return {inv.user_id: inv for inv in Invoice.objects.filter(fundraising=fundraising)}
+
+    @staticmethod
+    def _place_payload(place, index, user_voted_ids: set):
         # Temporary visual coordinates for the placeholder map until real Yandex Maps is connected.
         x = 24 + (index * 13) % 56
         y = 24 + (index * 17) % 52
@@ -128,7 +153,7 @@ class BootstrapView(APIView):
                 "red": "problem",
             }.get(place.interest_color, "new"),
             "votes": place.votes_count,
-            "supported": place.votes.filter(user=user).exists(),
+            "supported": place.id in user_voted_ids,
             "address": place.address,
             "district": place.address,
             "price": place.estimated_price,
@@ -197,11 +222,7 @@ class BootstrapView(APIView):
         return event.participations.select_related("user").order_by("user__first_name")
 
     @staticmethod
-    def _participant_payload(participation, fundraising):
-        invoice = None
-        if fundraising:
-            invoice = fundraising.invoices.filter(user=participation.user).first()
-
+    def _participant_payload(participation, invoice):
         return {
             "id": str(participation.user.id),
             "name": str(participation.user),

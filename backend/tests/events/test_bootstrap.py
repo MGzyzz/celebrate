@@ -1,0 +1,80 @@
+import pytest
+from datetime import date
+
+from apps.events.bootstrap import BootstrapView, _ru_date
+
+
+# ── Task 3: dateLabel tests ───────────────────────────────────────────────────
+
+def test_ru_date_june():
+    assert _ru_date(date(2026, 6, 20)) == "20 июня 2026"
+
+
+def test_ru_date_january():
+    assert _ru_date(date(2026, 1, 5)) == "5 января 2026"
+
+
+def test_ru_date_december():
+    assert _ru_date(date(2025, 12, 31)) == "31 декабря 2025"
+
+
+# ── Task 4: N+1 tests ────────────────────────────────────────────────────────
+
+from django.test.utils import CaptureQueriesContext
+from django.db import connection
+
+from apps.accounts.models import Membership, TelegramUser
+from apps.events.models import Event, Participation
+from apps.fundraising.models import Fundraising, Invoice
+from apps.places.models import PlaceIdea, PlaceVote
+from conftest import make_participant
+
+
+def _make_place(event, author, idx):
+    return PlaceIdea.objects.create(
+        event=event,
+        author=author,
+        title=f"Place {idx}",
+        address=f"Addr {idx}",
+        status=PlaceIdea.Status.PROPOSED,
+        interest_color=PlaceIdea.InterestColor.BLUE,
+    )
+
+
+@pytest.mark.django_db
+def test_compute_user_voted_ids_is_single_query(group, event):
+    """_compute_user_voted_ids must issue exactly 1 SQL query regardless of place count."""
+    organizer = TelegramUser.objects.create(telegram_id=8001, first_name="Org")
+    Membership.objects.create(user=organizer, group=group, role=Membership.Role.ORGANIZER)
+    for i in range(5):
+        _make_place(event, organizer, i)
+
+    with CaptureQueriesContext(connection) as ctx:
+        BootstrapView._compute_user_voted_ids(event, organizer)
+
+    assert len(ctx.captured_queries) == 1
+
+
+@pytest.mark.django_db
+def test_build_invoice_map_is_single_query(group, event, fundraising):
+    """_build_invoice_map must issue exactly 1 SQL query regardless of participant count."""
+    for i in range(10):
+        p = make_participant(group, event, 7000 + i, f"P{i}")
+        Invoice.objects.create(
+            fundraising=fundraising,
+            user=p,
+            amount=10000,
+            status=Invoice.Status.PENDING,
+        )
+
+    with CaptureQueriesContext(connection) as ctx:
+        BootstrapView._build_invoice_map(fundraising)
+
+    assert len(ctx.captured_queries) == 1
+
+
+@pytest.mark.django_db
+def test_build_invoice_map_returns_empty_for_none():
+    """_build_invoice_map(None) must return empty dict without error."""
+    result = BootstrapView._build_invoice_map(None)
+    assert result == {}
