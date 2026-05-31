@@ -26,4 +26,8 @@ class TelegramInitDataRequiredMiddleware:
 
     @staticmethod
     def _should_validate(path: str) -> bool:
-        return path.startswith("/api/") and path != "/api/auth/telegram/"
+        return (
+            path.startswith("/api/")
+            and path != "/api/auth/telegram/"
+            and not path.startswith("/api/bot/")
+        )

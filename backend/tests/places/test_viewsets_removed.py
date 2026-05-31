@@ -11,11 +11,17 @@ FAKE_INIT = "fake-init-data"
 def _client(monkeypatch, user):
     from apps.accounts import services as svc
     import apps.accounts.middleware as mw
+    import apps.places.views as pv
 
-    monkeypatch.setattr(svc, "validate_telegram_init_data", lambda _: {"id": user.telegram_id})
-    monkeypatch.setattr(svc, "upsert_telegram_user_from_init_data", lambda _: user)
-    # The middleware imports validate_telegram_init_data at module level, so patch it there too.
-    monkeypatch.setattr(mw, "validate_telegram_init_data", lambda _: {"id": user.telegram_id})
+    tg_validate = lambda _: {"id": user.telegram_id}
+    tg_upsert = lambda _: user
+
+    # Patch every module that imports these functions directly.
+    monkeypatch.setattr(svc, "validate_telegram_init_data", tg_validate)
+    monkeypatch.setattr(svc, "upsert_telegram_user_from_init_data", tg_upsert)
+    monkeypatch.setattr(mw, "validate_telegram_init_data", tg_validate)
+    monkeypatch.setattr(pv, "validate_telegram_init_data", tg_validate)
+    monkeypatch.setattr(pv, "upsert_telegram_user_from_init_data", tg_upsert)
     c = APIClient()
     c.credentials(HTTP_X_TELEGRAM_INIT_DATA=FAKE_INIT)
     return c
