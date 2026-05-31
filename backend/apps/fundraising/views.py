@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from rest_framework import decorators, exceptions, response, status, views, viewsets
 
@@ -128,19 +129,25 @@ class CurrentPriceItemCreateView(views.APIView):
             return response.Response({"detail": "Некорректный тип товара."}, status=status.HTTP_400_BAD_REQUEST)
 
         category, _ = ItemCategory.objects.get_or_create(group=membership.group, name=category_name)
-        item = PriceItem.objects.create(
-            fundraising=fundraising,
-            author=user,
-            category=category,
-            title=title,
-            quantity=quantity,
-            unit=unit,
-            unit_price=unit_price,
-            item_type=item_type,
-            status=PriceItem.Status.PROPOSED,
-            comment=str(request.data.get("comment", "")).strip(),
-            store_url=str(request.data.get("storeUrl", "")).strip(),
-        )
+        try:
+            item = PriceItem.objects.create(
+                fundraising=fundraising,
+                author=user,
+                category=category,
+                title=title,
+                quantity=quantity,
+                unit=unit,
+                unit_price=unit_price,
+                item_type=item_type,
+                status=PriceItem.Status.PROPOSED,
+                comment=str(request.data.get("comment", "")).strip(),
+                store_url=str(request.data.get("storeUrl", "")).strip(),
+            )
+        except DjangoValidationError as exc:
+            return response.Response(
+                {"detail": "; ".join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return response.Response(PriceItemSerializer(item).data, status=status.HTTP_201_CREATED)
 
 
