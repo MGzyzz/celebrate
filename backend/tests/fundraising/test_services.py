@@ -77,7 +77,8 @@ def test_total_always_preserved(group, event, fundraising, category):
 @pytest.mark.django_db
 def test_alcohol_remainder_goes_to_first_alcohol_participant(group, event, fundraising, category):
     """100 000 ÷ 3 alcohol participants = 33333 r 1 → first alcohol participant's invoice gets +1 tenge."""
-    users = [make_participant(group, event, 5000 + i, f"AlcUser{i}") for i in range(3)]
+    for i in range(3):
+        make_participant(group, event, 5000 + i, f"AlcUser{i}")
     # All 3 are regular (drink alcohol) by default
 
     PriceItem.objects.create(
@@ -140,5 +141,5 @@ def test_alcohol_remainder_skips_no_alcohol_participant(group, event, fundraisin
     assert alc_amounts == [50000, 50001]
 
     # The remainder (+1) must NOT be on the NO_ALCOHOL participant
-    assert no_alc_invoice.rounding_delta == 0 or no_alc_invoice.alcohol_amount == 0
+    assert no_alc_invoice.rounding_delta == 0
     assert sum(inv.alcohol_amount for inv in invoices) == 100001
