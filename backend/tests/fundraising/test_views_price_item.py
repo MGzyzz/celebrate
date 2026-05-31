@@ -3,7 +3,6 @@ from unittest.mock import patch
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.test import APIClient
 
-from apps.accounts.models import Membership, TelegramUser
 from conftest import make_participant
 
 FAKE_INIT = "fake-init-data"
@@ -39,4 +38,4 @@ def test_price_item_validation_error_returns_400(monkeypatch, group, event, fund
         )
 
     assert resp.status_code == 400
-    assert "detail" in resp.data
+    assert "Budget exceeded." in resp.data["detail"]
