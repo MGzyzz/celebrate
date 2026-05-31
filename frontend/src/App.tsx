@@ -38,6 +38,8 @@ export function App() {
       initialData={bootstrapQuery.data ?? emptyAppData}
       dataSource={bootstrapQuery.isSuccess ? "api" : "fallback"}
       isLoading={bootstrapQuery.isLoading}
+      isError={bootstrapQuery.isError}
+      onRetry={() => bootstrapQuery.refetch()}
       onCreateCollection={(payload) => createFundraisingMutation.mutateAsync(payload)}
       isCreatingCollection={createFundraisingMutation.isPending}
       onCreateItem={(payload) => createPriceItemMutation.mutateAsync(payload)}

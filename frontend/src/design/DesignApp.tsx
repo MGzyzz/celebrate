@@ -484,6 +484,8 @@ type DesignAppProps = {
   initialData?: AppData;
   dataSource?: "api" | "fallback";
   isLoading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
   onCreateCollection?: (payload: { title: string; description?: string; targetAmount: number; deadlineDays: number }) => Promise<unknown>;
   isCreatingCollection?: boolean;
   onCreateItem?: (payload: { title: string; category: string; quantity: number; unit: string; unitPrice: number; itemType: string; comment?: string; storeUrl?: string }) => Promise<unknown>;
@@ -499,6 +501,8 @@ export function DesignApp({
   initialData = fallbackData,
   dataSource = "fallback",
   isLoading = false,
+  isError = false,
+  onRetry,
   onCreateCollection = async () => undefined,
   isCreatingCollection = false,
   onCreateItem = async () => undefined,
@@ -612,6 +616,27 @@ export function DesignApp({
     joinGroup: onJoinGroup,
     isJoiningGroup,
   };
+
+  if (isError) {
+    return (
+      <div className="scroll screen-anim">
+        <div className="screen-pad stack">
+          <StateView
+            icon="warn"
+            title="Не удалось загрузить данные"
+            sub="Проверьте соединение и попробуйте снова."
+            action={
+              onRetry ? (
+                <Btn full icon="refresh" onClick={onRetry}>
+                  Повторить
+                </Btn>
+              ) : undefined
+            }
+          />
+        </div>
+      </div>
+    );
+  }
 
   const stack = nav.stacks[nav.tab];
   const current = stack[stack.length - 1];
