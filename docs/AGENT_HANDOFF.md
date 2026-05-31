@@ -46,6 +46,13 @@
 - При ошибке API frontend теперь должен показывать реальный `detail/error` из backend, а не только общую фразу.
 - Ограничение на открытие frontend в браузере временно убрано, чтобы смотреть ошибки.
 
+## Документация
+
+- `docs/AGENT_HANDOFF.md` — этот файл, обновляется после каждой сессии
+- `docs/DESIGN_REVIEW.md` — сравнение дизайна и фронтенда, список мёртвого кода (2026-05-31)
+- `docs/ARCHITECTURE_ANALYSIS.md` — анализ архитектурных решений, баги, приоритеты (2026-05-31)
+- `docs/IMPLEMENTATION_NOTES.md` — исходные заметки по MVP порядку и безопасности
+
 ## Важные файлы
 
 - Backend settings: `backend/config/settings.py`
@@ -138,12 +145,12 @@ ngrok http 5173
 
 ## Что лучше сделать дальше
 
-1. Исправить duplicate key warning в `SuggestList`.
-2. Повторить добавление места и посмотреть реальную ошибку backend-а в UI/Network.
-3. Проверить, что после выбора подсказки Yandex в payload уходят `latitude` и `longitude`.
-4. Если ошибка из-за Telegram auth, тестировать добавление места только внутри Telegram Mini App.
-5. Если ошибка из-за группы/события, проверить `Membership` и `Event` в базе.
-6. Обновить или удалить устаревшую строку про browser guard в `docs/IMPLEMENTATION_NOTES.md`, когда режим доступа будет окончательно решен.
+1. Повторить добавление места и посмотреть реальную ошибку backend-а в UI/Network.
+2. Проверить, что после выбора подсказки Yandex в payload уходят `latitude` и `longitude`.
+3. Если ошибка из-за Telegram auth, тестировать добавление места только внутри Telegram Mini App.
+4. Если ошибка из-за группы/события, проверить `Membership` и `Event` в базе.
+5. Обновить или удалить устаревшую строку про browser guard в `docs/IMPLEMENTATION_NOTES.md`, когда режим доступа будет окончательно решен.
+6. Проверить, нужен ли компонент `Sheet` в `DesignApp.tsx` — он определён, но нигде не используется.
 
 
 ## Session Update 2026-05-31
@@ -208,3 +215,62 @@ ngrok http 5173
 ### Checks
 
 - `npm run lint` passed.
+
+## Session Update 2026-05-31 - Cleanup (dead code removal)
+
+### Completed
+
+- Removed dead scaffold that remained after DesignApp integration:
+  - Deleted `frontend/src/pages/` (5 files: EventHomePage, FundraisingPage, ParticipantsPage, PlacesPage, ProfilePage) — none were imported.
+  - Deleted `frontend/src/components/` (AppShell, BudgetProgress, StatusBadge, TelegramOnlyGuard) — all unused.
+  - Deleted `frontend/src/lib/useTelegramTheme.ts` — unused.
+  - Deleted `frontend/vite.config.d.ts` and `frontend/vite.config.js` — compiled artifacts that shouldn't be committed.
+  - Removed `BrowserRouter` import and wrapper from `frontend/src/main.tsx` — DesignApp manages its own stack navigation; react-router was vestigial.
+- Created `docs/DESIGN_REVIEW.md` with full design-transfer verification, component checklist, and dead-code audit.
+
+### Checks
+
+- Verified with `grep` before deletion that none of the removed files were imported anywhere.
+- `node_modules` not installed locally — TypeScript check not run. Run `npm install && npm run lint` after next deploy.
+
+### Notes
+
+- `react-router-dom` is now only used in `package.json` as a dependency (it was only used in the deleted files). Consider removing it from `package.json` as well once confirmed nothing else needs it.
+- `src/components/` folder is now gone. All UI components live in `src/design/DesignApp.tsx`.
+
+---
+
+## Session Update 2026-05-31 — Bug Fix Batch
+
+### Completed
+
+All bugs and technical debt from `docs/ARCHITECTURE_ANALYSIS.md` fixed:
+
+1. **Rounding fix** — `backend/apps/fundraising/services.py`: remainder from integer division distributed to first invoice; `Invoice.rounding_delta` now populated. Participants queried with `.order_by("pk")` for stable remainder assignment.
+2. **ValidationError → 400** — `backend/apps/fundraising/views.py`: `PriceItem.objects.create()` wrapped in `try/except DjangoValidationError` → returns `{"detail": "..."}` with HTTP 400.
+3. **dateLabel format** — `backend/apps/events/bootstrap.py`: `_ru_date()` helper produces "20 июня 2026" instead of "20.06.2026".
+4. **N+1 fix** — `backend/apps/events/bootstrap.py`: `_compute_user_voted_ids()` and `_build_invoice_map()` precompute votes set and invoice dict before loops. 35 extra SQL queries per bootstrap eliminated.
+5. **Frontend error state** — `frontend/src/App.tsx` + `frontend/src/design/DesignApp.tsx`: added `isError` and `onRetry` props; bootstrap failure shows `StateView` with retry button instead of empty screen. Also added `refresh: RotateCcw` icon to `iconMap`.
+6. **ViewSet security** — `backend/apps/places/views.py`, `urls.py` + `backend/apps/fundraising/urls.py`: removed all open `ModelViewSet` endpoints (`GET /api/places/`, `/api/fundraisings/`, etc.). Extracted `PlaceSupportView` as standalone `APIView`. Dead `PlaceIdeaViewSet`/`PlaceVoteViewSet` classes removed.
+7. **react-router-dom removed** — `frontend/package.json`: uninstalled unused dependency.
+
+### Test Infrastructure Added
+
+- `backend/conftest.py` — shared fixtures: `group`, `event`, `fundraising`, `category`, `organizer_user`, `make_participant()`
+- `backend/tests/fundraising/test_services.py` — 5 tests for rounding
+- `backend/tests/fundraising/test_views_price_item.py` — 1 test for ValidationError→400
+- `backend/tests/events/test_bootstrap.py` — 6 tests for dateLabel + N+1
+- `backend/tests/places/test_viewsets_removed.py` — 3 tests for ViewSet removal + support
+
+### Checks
+
+- `poetry run python manage.py check` — 0 issues
+- `poetry run pytest` — **15 passed**
+- `npm run lint` and `npm run build` — clean
+- No new migrations needed (no model changes)
+
+### Notes
+
+- `FundraisingViewSet` with `finalize` action still exists in `views.py` but is no longer exposed via URLs. Wire up when frontend needs it.
+- `Sheet` component that was flagged in DESIGN_REVIEW.md turned out to be `MapSheet` which IS used — no action needed.
+- All architecture issues from `docs/ARCHITECTURE_ANALYSIS.md` are now resolved. Only remaining item: ModelViewSets scope (fixed) and `bootstrapQuery.retry: false` (low priority — consider `retry: 1` for production).
