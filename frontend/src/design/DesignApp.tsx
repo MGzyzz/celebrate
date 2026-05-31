@@ -22,6 +22,7 @@ import {
   Music,
   ParkingCircle,
   Plus,
+  RotateCcw,
   Route,
   Search,
   Send,
@@ -473,6 +474,7 @@ const iconMap = {
   deposit: CircleDollarSign,
   send: Send,
   minus: Minus,
+  refresh: RotateCcw,
 };
 
 function Icon({ name, size = 22, stroke = 1.8, className, style }: { name: string; size?: number; stroke?: number; className?: string; style?: React.CSSProperties }) {
