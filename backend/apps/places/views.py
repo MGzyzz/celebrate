@@ -2,6 +2,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.db.models import Count
+from django.shortcuts import get_object_or_404
 from rest_framework import decorators, exceptions, response, status, views, viewsets
 
 from apps.accounts.models import Membership
@@ -120,6 +121,30 @@ class CurrentPlaceCreateView(views.APIView):
             interest_color=PlaceIdea.InterestColor.BLUE,
         )
         return response.Response(PlaceIdeaSerializer(place).data, status=status.HTTP_201_CREATED)
+
+
+class PlaceSupportView(views.APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request, pk):
+        user = _telegram_user(request)
+        place = get_object_or_404(PlaceIdea, pk=pk)
+        membership = Membership.objects.filter(user=user, group=place.event.group).first()
+        if not membership:
+            raise exceptions.PermissionDenied("Пользователь не состоит в группе этого события.")
+
+        vote, created = PlaceVote.objects.get_or_create(place=place, user=user)
+        votes_count = place.votes.count()
+        return response.Response(
+            {
+                "id": vote.id,
+                "place": place.id,
+                "created": created,
+                "votes_count": votes_count,
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
 
 class PlaceIdeaViewSet(viewsets.ModelViewSet):

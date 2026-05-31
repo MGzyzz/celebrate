@@ -1,15 +1,8 @@
-from rest_framework.routers import DefaultRouter
-
 from django.urls import path
 
-from apps.places.views import CurrentPlaceCreateView, PlaceIdeaViewSet, PlaceVoteViewSet
-
-
-router = DefaultRouter()
-router.register("places", PlaceIdeaViewSet, basename="place")
-router.register("place-votes", PlaceVoteViewSet, basename="place-vote")
+from apps.places.views import CurrentPlaceCreateView, PlaceSupportView
 
 urlpatterns = [
     path("places/current/", CurrentPlaceCreateView.as_view(), name="current-place-create"),
-    *router.urls,
+    path("places/<int:pk>/support/", PlaceSupportView.as_view(), name="place-support"),
 ]
