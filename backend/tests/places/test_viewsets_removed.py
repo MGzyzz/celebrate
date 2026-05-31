@@ -22,23 +22,21 @@ def _client(monkeypatch, user):
 
 
 @pytest.mark.django_db
-def test_place_list_endpoint_removed():
-    """GET /api/places/ must not return a valid list response after ViewSet removal.
-
-    With TelegramInitDataRequiredMiddleware, the middleware returns 403 before the
-    router can serve a 404, so either 403 or 404 confirms the endpoint is gone.
-    """
-    c = APIClient()
-    resp = c.get("/api/places/")
-    assert resp.status_code in (403, 404)
+def test_place_list_endpoint_removed(monkeypatch):
+    """GET /api/places/ must return 404 after ViewSet removal (authenticated to bypass middleware)."""
+    user = TelegramUser.objects.create(telegram_id=6001, first_name="TestUser")
+    client = _client(monkeypatch, user)
+    resp = client.get("/api/places/")
+    assert resp.status_code == 404
 
 
 @pytest.mark.django_db
-def test_fundraising_list_endpoint_removed():
-    """GET /api/fundraisings/ must not return a valid list response after ViewSet removal."""
-    c = APIClient()
-    resp = c.get("/api/fundraisings/")
-    assert resp.status_code in (403, 404)
+def test_fundraising_list_endpoint_removed(monkeypatch):
+    """GET /api/fundraisings/ must return 404 after ViewSet removal (authenticated to bypass middleware)."""
+    user = TelegramUser.objects.create(telegram_id=6002, first_name="TestUser2")
+    client = _client(monkeypatch, user)
+    resp = client.get("/api/fundraisings/")
+    assert resp.status_code == 404
 
 
 @pytest.mark.django_db

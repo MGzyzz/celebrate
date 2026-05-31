@@ -1,16 +1,15 @@
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
-from django.db.models import Count
 from django.shortcuts import get_object_or_404
-from rest_framework import decorators, exceptions, response, status, views, viewsets
+from rest_framework import exceptions, response, status, views
 
 from apps.accounts.models import Membership
 from apps.accounts.services import TelegramAuthError, upsert_telegram_user_from_init_data, validate_telegram_init_data
 from apps.events.models import Event
 from apps.places.geocoding import geocode_place_with_diagnostics
 from apps.places.models import PlaceIdea, PlaceVote
-from apps.places.serializers import PlaceIdeaSerializer, PlaceVoteSerializer
+from apps.places.serializers import PlaceIdeaSerializer
 
 
 def _telegram_user(request):
@@ -147,31 +146,3 @@ class PlaceSupportView(views.APIView):
         )
 
 
-class PlaceIdeaViewSet(viewsets.ModelViewSet):
-    queryset = PlaceIdea.objects.select_related("event", "author").annotate(votes_count=Count("votes"))
-    serializer_class = PlaceIdeaSerializer
-
-    @decorators.action(detail=True, methods=["post"], authentication_classes=[], permission_classes=[])
-    def support(self, request, pk=None):
-        user = _telegram_user(request)
-        place = self.get_object()
-        membership = Membership.objects.filter(user=user, group=place.event.group).first()
-        if not membership:
-            raise exceptions.PermissionDenied("Пользователь не состоит в группе этого события.")
-
-        vote, created = PlaceVote.objects.get_or_create(place=place, user=user)
-        votes_count = place.votes.count()
-        return response.Response(
-            {
-                "id": vote.id,
-                "place": place.id,
-                "created": created,
-                "votes_count": votes_count,
-            },
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-        )
-
-
-class PlaceVoteViewSet(viewsets.ModelViewSet):
-    queryset = PlaceVote.objects.select_related("place", "user").all()
-    serializer_class = PlaceVoteSerializer
