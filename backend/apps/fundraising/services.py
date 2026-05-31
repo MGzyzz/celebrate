@@ -24,6 +24,8 @@ def finalize_fundraising(fundraising: Fundraising) -> list[Invoice]:
     common_total = sum(item.total_price for item in common_items)
     alcohol_total = sum(item.total_price for item in alcohol_items)
 
+    # INDIVIDUAL participants are included here: they pay common_share + custom_share_amount (their fixed
+    # individual amount is added on top of the common split, not instead of it).
     regular_participants = [p for p in participants if p.payment_share != Participation.PaymentShare.EXEMPT]
     alcohol_participant_pks = {
         p.pk
@@ -32,9 +34,9 @@ def finalize_fundraising(fundraising: Fundraising) -> list[Invoice]:
     }
 
     common_share = common_total // len(regular_participants) if regular_participants else 0
-    common_remainder = (common_total % len(regular_participants)) if regular_participants else 0
+    common_remainder = common_total % len(regular_participants) if regular_participants else 0
     alcohol_share = alcohol_total // len(alcohol_participant_pks) if alcohol_participant_pks else 0
-    alcohol_remainder = (alcohol_total % len(alcohol_participant_pks)) if alcohol_participant_pks else 0
+    alcohol_remainder = alcohol_total % len(alcohol_participant_pks) if alcohol_participant_pks else 0
 
     invoices = []
     first_regular_done = False
