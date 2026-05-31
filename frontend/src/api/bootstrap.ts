@@ -4,6 +4,7 @@ import { AppData } from "../design/data";
 type BootstrapResponse = Partial<AppData> & {
   event: AppData["event"] | null;
   myInvoice: AppData["myInvoice"] | null;
+  needsGroupCode?: boolean;
 };
 
 const emptyInvoice = (deadline = ""): AppData["myInvoice"] => ({
@@ -17,6 +18,7 @@ const emptyInvoice = (deadline = ""): AppData["myInvoice"] => ({
 });
 
 export const emptyAppData: AppData = {
+  needsGroupCode: false,
   event: {
     id: "",
     title: "Выпускной",
@@ -47,12 +49,14 @@ export async function fetchBootstrapData(): Promise<AppData> {
   if (!response.event) {
     return {
       ...emptyAppData,
+      needsGroupCode: Boolean(response.needsGroupCode),
       me: response.me ?? emptyAppData.me,
       myInvoice: response.myInvoice ?? emptyInvoice(response.collections?.[0]?.deadline),
     };
   }
 
   return {
+    needsGroupCode: Boolean(response.needsGroupCode),
     event: response.event,
     me: response.me ?? emptyAppData.me,
     places: response.places ?? [],

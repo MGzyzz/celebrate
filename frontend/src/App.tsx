@@ -1,7 +1,8 @@
 import { DesignApp } from "./design/DesignApp";
 import { emptyAppData, fetchBootstrapData } from "./api/bootstrap";
+import { joinGroupByCode } from "./api/accounts";
 import { createFundraising, CreateFundraisingPayload, createPriceItem, CreatePriceItemPayload } from "./api/fundraising";
-import { createPlace, CreatePlacePayload } from "./api/places";
+import { createPlace, CreatePlacePayload, supportPlace } from "./api/places";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export function App() {
@@ -23,6 +24,14 @@ export function App() {
     mutationFn: (payload: CreatePlacePayload) => createPlace(payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
   });
+  const supportPlaceMutation = useMutation({
+    mutationFn: (placeId: string) => supportPlace(placeId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
+  });
+  const joinGroupMutation = useMutation({
+    mutationFn: (code: string) => joinGroupByCode(code),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
+  });
 
   return (
     <DesignApp
@@ -35,6 +44,9 @@ export function App() {
       isCreatingItem={createPriceItemMutation.isPending}
       onCreatePlace={(payload) => createPlaceMutation.mutateAsync(payload)}
       isCreatingPlace={createPlaceMutation.isPending}
+      onSupportPlace={(placeId) => supportPlaceMutation.mutateAsync(placeId)}
+      onJoinGroup={(code) => joinGroupMutation.mutateAsync(code)}
+      isJoiningGroup={joinGroupMutation.isPending}
     />
   );
 }

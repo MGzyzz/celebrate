@@ -12,7 +12,7 @@ class TelegramUserSerializer(serializers.ModelSerializer):
 class StudentGroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = StudentGroup
-        fields = ["id", "name", "telegram_chat_id", "currency"]
+        fields = ["id", "name", "telegram_chat_id", "invite_code", "currency"]
 
 
 class MembershipSerializer(serializers.ModelSerializer):

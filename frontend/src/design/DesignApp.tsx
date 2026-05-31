@@ -61,6 +61,8 @@ const ALMATY_BOUNDS = [
   [43.05, 76.68],
   [43.42, 77.15],
 ];
+const KAZAKHSTAN_MARKERS = ["казахстан", "қазақстан", "kazakhstan", "kz", "алматы", "almaty", "алматинская"];
+const OUT_OF_KAZAKHSTAN_MARKERS = ["россия", "russia", "москва", "moscow", "московская область"];
 let yandexMapsPromise: Promise<any> | null = null;
 
 function loadYandexMaps() {
@@ -116,18 +118,71 @@ type YandexSuggestion = {
   title: string;
   subtitle: string;
   address?: string;
+  country?: string;
+  uri?: string;
   coords?: { lat: number; lng: number };
 };
 
-function makeSuggestion(item: any): YandexSuggestion {
-  const value = String(item.value ?? item.displayName ?? "");
-  const displayName = String(item.displayName ?? value);
-  const [title, ...rest] = displayName.split(",").map((part) => part.trim()).filter(Boolean);
+function suggestText(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value && typeof value === "object" && "text" in value && typeof value.text === "string") {
+    return value.text;
+  }
+  return "";
+}
+
+function getAddressComponents(item: any) {
+  if (Array.isArray(item.address?.component)) {
+    return item.address.component;
+  }
+  if (Array.isArray(item.address?.components)) {
+    return item.address.components;
+  }
+  return [];
+}
+
+function getCountryName(item: any) {
+  const country = getAddressComponents(item).find((component: any) => component?.kind === "country");
+  return suggestText(country?.name) || suggestText(country?.country_code);
+}
+
+function makeApiSuggestion(item: any): YandexSuggestion {
+  const title = suggestText(item.title);
+  const subtitle = suggestText(item.subtitle);
+  const address = suggestText(item.address?.formatted_address) || subtitle;
+  const country = getCountryName(item);
   return {
-    value,
-    title: title || value,
-    subtitle: rest.join(", ") || value,
+    value: [title, subtitle].filter(Boolean).join(", ") || title || subtitle,
+    title: title || subtitle,
+    subtitle: subtitle || address || title,
+    address,
+    country,
+    uri: typeof item.uri === "string" ? item.uri : undefined,
   };
+}
+
+function isKazakhstanSuggestion(item: YandexSuggestion) {
+  const text = [item.title, item.subtitle, item.address, item.country].filter(Boolean).join(" ").toLowerCase();
+  if (OUT_OF_KAZAKHSTAN_MARKERS.some((marker) => text.includes(marker))) {
+    return false;
+  }
+  if (item.country) {
+    return KAZAKHSTAN_MARKERS.some((marker) => item.country?.toLowerCase().includes(marker));
+  }
+  return KAZAKHSTAN_MARKERS.some((marker) => text.includes(marker));
+}
+
+function suggestionRank(item: YandexSuggestion) {
+  const text = [item.title, item.subtitle, item.address].filter(Boolean).join(" ").toLowerCase();
+  if (text.includes("алматы") || text.includes("almaty")) {
+    return 0;
+  }
+  if (text.includes("алматинская")) {
+    return 1;
+  }
+  return 2;
 }
 
 function transliterateLatinToCyrillic(value: string) {
@@ -179,31 +234,12 @@ function transliterateLatinToCyrillic(value: string) {
 
 function getSearchVariants(query: string) {
   const trimmed = query.trim();
-  const variants = [trimmed, `${trimmed} Алматы`, `${trimmed} Almaty`];
+  const variants = [`${trimmed} Алматы Казахстан`, `${trimmed} Алматы`, `${trimmed} Казахстан`, trimmed];
   if (/^[\w\s-]+$/i.test(trimmed) && /[a-z]/i.test(trimmed)) {
     const cyrillic = transliterateLatinToCyrillic(trimmed);
-    variants.push(cyrillic, `${cyrillic} Алматы`);
+    variants.push(`${cyrillic} Алматы Казахстан`, `${cyrillic} Алматы`, `${cyrillic} Казахстан`, cyrillic);
   }
   return [...new Set(variants.filter((item) => item.trim().length >= 2))];
-}
-
-function makeGeocodeSuggestion(geoObject: any): YandexSuggestion | null {
-  const address = geoObject.getAddressLine?.();
-  const name = geoObject.properties.get("name");
-  const description = geoObject.properties.get("description");
-  const [lat, lng] = geoObject.geometry.getCoordinates();
-  const title = String(name || address || "").trim();
-  if (!title) {
-    return null;
-  }
-  const subtitle = String(description || address || "").trim();
-  return {
-    value: String(address || title),
-    title,
-    subtitle: subtitle && subtitle !== title ? subtitle : String(address || title),
-    address: String(address || ""),
-    coords: { lat: Number(lat), lng: Number(lng) },
-  };
 }
 
 function uniqueSuggestions(items: YandexSuggestion[]) {
@@ -218,66 +254,67 @@ function uniqueSuggestions(items: YandexSuggestion[]) {
   });
 }
 
+function suggestionKey(item: YandexSuggestion, index: number) {
+  const lat = item.coords?.lat ?? "";
+  const lng = item.coords?.lng ?? "";
+  return `${item.value}|${item.title}|${item.subtitle}|${lat}|${lng}|${index}`;
+}
+
 async function getYandexSuggestions(query: string) {
   if (query.trim().length < 2) {
     return [];
   }
-  const ymaps = await loadYandexMaps();
-  const variants = getSearchVariants(query);
+
+  if (!YANDEX_SUGGEST_API_KEY) {
+    return [];
+  }
+
+  const variants = getSearchVariants(query).slice(0, 6);
   const results = await Promise.allSettled(
-    variants.flatMap((variant) => [
-      ymaps.suggest(variant, { results: 5, provider: "yandex#map", boundedBy: ALMATY_BOUNDS }).then((items: any[]) => items.map(makeSuggestion)),
-      ymaps.suggest(variant, { results: 5, provider: "yandex#search", boundedBy: ALMATY_BOUNDS }).then((items: any[]) => items.map(makeSuggestion)),
-      ymaps.geocode(variant, { results: 5, boundedBy: ALMATY_BOUNDS }).then((collection: any) => {
-        const items: YandexSuggestion[] = [];
-        collection.geoObjects.each((geoObject: any) => {
-          const suggestion = makeGeocodeSuggestion(geoObject);
-          if (suggestion) {
-            items.push(suggestion);
-          }
-        });
-        return items;
-      }),
-    ]),
+    variants.map(async (variant) => {
+      const params = new URLSearchParams({
+        apikey: YANDEX_SUGGEST_API_KEY,
+        text: variant,
+        lang: "ru_RU",
+        results: "8",
+        print_address: "1",
+        attrs: "uri",
+        bbox: `${ALMATY_BOUNDS[0][1]},${ALMATY_BOUNDS[0][0]}~${ALMATY_BOUNDS[1][1]},${ALMATY_BOUNDS[1][0]}`,
+        strict_bounds: "1",
+      });
+      const response = await fetch(`https://suggest-maps.yandex.ru/v1/suggest?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Yandex Suggest failed with HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      return Array.isArray(data.results) ? data.results.map(makeApiSuggestion).filter(isKazakhstanSuggestion) : [];
+    }),
   );
-  return uniqueSuggestions(results.flatMap((result) => (result.status === "fulfilled" ? result.value : []))).slice(0, 6);
+  return uniqueSuggestions(results.flatMap((result) => (result.status === "fulfilled" ? result.value : [])))
+    .sort((left, right) => suggestionRank(left) - suggestionRank(right))
+    .slice(0, 6);
 }
 
-async function geocodeYandexSuggestion(suggestion: YandexSuggestion) {
-  if (suggestion.address && suggestion.coords) {
-    return {
-      name: suggestion.title,
-      address: suggestion.address,
-      coords: suggestion.coords,
-    };
+function getErrorText(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) {
+    if (error.message === "scriptError") {
+      return fallback;
+    }
+    return error.message;
   }
-  const ymaps = await loadYandexMaps();
-  const query = suggestion.subtitle && suggestion.subtitle !== suggestion.value ? `${suggestion.title}, ${suggestion.subtitle}` : suggestion.value;
-  const result = await ymaps.geocode(query, { results: 1, boundedBy: ALMATY_BOUNDS });
-  const geoObject = result.geoObjects.get(0);
-  if (!geoObject) {
-    return null;
+  if (typeof error === "string" && error.trim()) {
+    if (error === "scriptError") {
+      return fallback;
+    }
+    return error;
   }
-  const [lat, lng] = geoObject.geometry.getCoordinates();
-  const address = geoObject.getAddressLine?.() ?? suggestion.value;
-  const name = geoObject.properties.get("name") ?? suggestion.title;
-  return {
-    name: String(name),
-    address: String(address),
-    coords: { lat: Number(lat), lng: Number(lng) },
-  };
-}
-
-async function geocodePlaceInput(name: string, address: string) {
-  const query = [name, address].filter(Boolean).join(", ");
-  if (!query.trim()) {
-    return null;
+  if (error && typeof error === "object") {
+    const message = "message" in error ? error.message : null;
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
   }
-  return geocodeYandexSuggestion({
-    value: query,
-    title: name || address,
-    subtitle: address,
-  });
+  return fallback;
 }
 
 function getStoredThemePreference(): ThemePreference {
@@ -337,8 +374,11 @@ type Ctx = {
   isCreatingCollection: boolean;
   createItem: (payload: { title: string; category: string; quantity: number; unit: string; unitPrice: number; itemType: string; comment?: string; storeUrl?: string }) => Promise<unknown>;
   isCreatingItem: boolean;
-  createPlace: (payload: { title: string; address: string; latitude?: number; longitude?: number; estimatedPrice: number; capacity: number; description?: string; amenities: string[]; authorComment?: string }) => Promise<unknown>;
+  createPlace: (payload: { title: string; address: string; yandexUri?: string; latitude?: number; longitude?: number; estimatedPrice: number; capacity: number; description?: string; amenities: string[]; authorComment?: string }) => Promise<unknown>;
   isCreatingPlace: boolean;
+  supportPlace: (placeId: string) => Promise<unknown>;
+  joinGroup: (code: string) => Promise<unknown>;
+  isJoiningGroup: boolean;
 };
 
 const ROOT: Record<Tab, ScreenName> = {
@@ -448,8 +488,11 @@ type DesignAppProps = {
   isCreatingCollection?: boolean;
   onCreateItem?: (payload: { title: string; category: string; quantity: number; unit: string; unitPrice: number; itemType: string; comment?: string; storeUrl?: string }) => Promise<unknown>;
   isCreatingItem?: boolean;
-  onCreatePlace?: (payload: { title: string; address: string; latitude?: number; longitude?: number; estimatedPrice: number; capacity: number; description?: string; amenities: string[]; authorComment?: string }) => Promise<unknown>;
+  onCreatePlace?: (payload: { title: string; address: string; yandexUri?: string; latitude?: number; longitude?: number; estimatedPrice: number; capacity: number; description?: string; amenities: string[]; authorComment?: string }) => Promise<unknown>;
   isCreatingPlace?: boolean;
+  onSupportPlace?: (placeId: string) => Promise<unknown>;
+  onJoinGroup?: (code: string) => Promise<unknown>;
+  isJoiningGroup?: boolean;
 };
 
 export function DesignApp({
@@ -462,6 +505,9 @@ export function DesignApp({
   isCreatingItem = false,
   onCreatePlace = async () => undefined,
   isCreatingPlace = false,
+  onSupportPlace = async () => undefined,
+  onJoinGroup = async () => undefined,
+  isJoiningGroup = false,
 }: DesignAppProps) {
   const appData = initialData;
   const backendRole: Role = appData.me.role === "organizer" ? "organizer" : "participant";
@@ -562,18 +608,15 @@ export function DesignApp({
     isCreatingItem,
     createPlace: onCreatePlace,
     isCreatingPlace,
+    supportPlace: onSupportPlace,
+    joinGroup: onJoinGroup,
+    isJoiningGroup,
   };
-
-  useEffect(() => {
-    if (role === "organizer") {
-      setNav((state) => ({ ...state, tab: "participants", stacks: { ...state.stacks, participants: [{ name: "participants" }] } }));
-    }
-  }, [role]);
 
   const stack = nav.stacks[nav.tab];
   const current = stack[stack.length - 1];
   const isRoot = stack.length === 1;
-  const [title, subtitle] = getTitle(current, ctx);
+  const [title, subtitle] = isLoading ? [t("loading")] : getTitle(current, ctx);
 
   return (
     <div className="design-root">
@@ -594,8 +637,8 @@ export function DesignApp({
                 ) : undefined
               }
             />
-            <ScreenSwitch current={current} ctx={ctx} />
-            <BottomNav tab={nav.tab} onTab={navApi.setTab} t={t} isOrg={role === "organizer"} />
+            {isLoading ? <AppSkeleton /> : appData.needsGroupCode ? <JoinGroupScreen ctx={ctx} /> : <ScreenSwitch current={current} ctx={ctx} />}
+            {!appData.needsGroupCode && <BottomNav tab={nav.tab} onTab={navApi.setTab} t={t} isOrg={role === "organizer"} />}
           </>
         )}
         <Toast toast={toast} />
@@ -713,6 +756,7 @@ function HomeScreen({ ctx }: { ctx: Ctx }) {
   const days = col ? ctx.daysLeft(col.deadline) : 0;
   const inCount = ctx.data.participants.filter((participant) => participant.participation === "in").length;
   const isOrg = ctx.role === "organizer";
+  const canOpenCollection = isOrg || ctx.participation === "in";
   const emptyCollectionsText =
     ctx.role === "organizer"
       ? "Сборов еще нет. Создайте первый сбор и добавьте товары."
@@ -779,7 +823,7 @@ function HomeScreen({ ctx }: { ctx: Ctx }) {
           ) : (
             <QuickAction icon="check" label={ctx.t("confirm_participation")} c="green" onClick={() => ctx.nav.push("confirm")} />
           )}
-          <QuickAction icon="wallet" label={ctx.t("open_collection")} c="blue" onClick={() => { ctx.nav.setTab("collections"); if (col) ctx.nav.push("collection", { id: col.id }); }} />
+          {canOpenCollection && <QuickAction icon="wallet" label={ctx.t("open_collection")} c="blue" onClick={() => { ctx.nav.setTab("collections"); if (col) ctx.nav.push("collection", { id: col.id }); }} />}
           <QuickAction icon="map" label={ctx.t("open_map")} c="amber" onClick={() => ctx.nav.setTab("places")} />
           {isOrg ? (
             <QuickAction icon="users" label={ctx.t("nav_participants")} c="accent" onClick={() => ctx.nav.setTab("participants")} />
@@ -813,6 +857,37 @@ function ConfirmScreen({ ctx }: { ctx: Ctx }) {
         ))}
       </div>
       <BottomAction><Btn full onClick={() => { ctx.setParticipation(selected); ctx.toast(ctx.t("toast_status")); ctx.nav.pop(); }}>{ctx.t("confirm")}</Btn></BottomAction>
+    </div>
+  );
+}
+
+function JoinGroupScreen({ ctx }: { ctx: Ctx }) {
+  const [code, setCode] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const submit = async () => {
+    const normalized = code.trim().toUpperCase();
+    if (!normalized) {
+      setError("Введите код группы");
+      return;
+    }
+    try {
+      setError(null);
+      await ctx.joinGroup(normalized);
+      ctx.toast("Группа подключена", "check");
+    } catch (joinError) {
+      setError(getErrorText(joinError, "Не удалось подключиться к группе"));
+    }
+  };
+
+  return (
+    <div className="scroll screen-anim">
+      <div className="screen-pad stack">
+        <StateView icon="lock" title="Введите код группы" sub="Попросите код у организатора выпускного. После подключения откроются событие, места и сборы." />
+        <Field label="Код группы" error={error}>
+          <Input value={code} onChange={(value) => { setCode(value.toUpperCase()); setError(null); }} placeholder="Например, A1B2C3D4" />
+        </Field>
+        <Btn full disabled={ctx.isJoiningGroup} onClick={submit}>{ctx.isJoiningGroup ? ctx.t("loading") : "Подключиться"}</Btn>
+      </div>
     </div>
   );
 }
@@ -857,12 +932,71 @@ function PlacesScreen({ ctx }: { ctx: Ctx }) {
 function YandexPlacesMap({ places, totalPlaces, selected, onSelect, t }: { places: Place[]; totalPlaces: number; selected: string | null; onSelect: (id: string) => void; t: (key: string) => string }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
+  const [resolvedCoords, setResolvedCoords] = useState<Record<string, { lat: number; lng: number }>>({});
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "missing-key">(
     YANDEX_MAPS_API_KEY ? "loading" : "missing-key",
   );
   const [showEmptyNotice, setShowEmptyNotice] = useState(totalPlaces === 0);
-  const mappedPlaces = places.filter((place) => typeof place.lat === "number" && typeof place.lng === "number");
+  const [showNoCoordsNotice, setShowNoCoordsNotice] = useState(false);
+  const mappedPlaces = places
+    .map((place) => {
+      const coords = typeof place.lat === "number" && typeof place.lng === "number" ? { lat: place.lat, lng: place.lng } : resolvedCoords[place.id];
+      return coords ? { ...place, lat: coords.lat, lng: coords.lng } : place;
+    })
+    .filter((place) => typeof place.lat === "number" && typeof place.lng === "number");
   const placesKey = mappedPlaces.map((place) => `${place.id}:${place.lat}:${place.lng}:${place.interest}:${place.votes}`).join("|");
+
+  useEffect(() => {
+    if (!YANDEX_MAPS_API_KEY) {
+      return;
+    }
+
+    const missingPlaces = places.filter(
+      (place) =>
+        (typeof place.lat !== "number" || typeof place.lng !== "number") &&
+        !resolvedCoords[place.id] &&
+        (place.address || place.name),
+    );
+    if (!missingPlaces.length) {
+      return;
+    }
+
+    let cancelled = false;
+    loadYandexMaps()
+      .then(async (ymaps) => {
+        const entries = await Promise.all(
+          missingPlaces.map(async (place) => {
+            const query = [place.name, place.address].filter(Boolean).join(", ");
+            const result = await ymaps.geocode(query, { results: 1, boundedBy: ALMATY_BOUNDS });
+            const geoObject = result.geoObjects.get(0);
+            if (!geoObject) {
+              return null;
+            }
+            const [lat, lng] = geoObject.geometry.getCoordinates();
+            return [place.id, { lat: Number(lat), lng: Number(lng) }] as const;
+          }),
+        );
+        if (cancelled) {
+          return;
+        }
+        setResolvedCoords((state) => {
+          const next = { ...state };
+          let changed = false;
+          entries.forEach((entry) => {
+            if (entry) {
+              next[entry[0]] = entry[1];
+              changed = true;
+            }
+          });
+          return changed ? next : state;
+        });
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [places, resolvedCoords]);
 
   useEffect(() => {
     if (totalPlaces !== 0) {
@@ -874,6 +1008,17 @@ function YandexPlacesMap({ places, totalPlaces, selected, onSelect, t }: { place
     const timer = window.setTimeout(() => setShowEmptyNotice(false), 3200);
     return () => window.clearTimeout(timer);
   }, [totalPlaces]);
+
+  useEffect(() => {
+    if (status !== "ready" || places.length === 0 || mappedPlaces.length > 0) {
+      setShowNoCoordsNotice(false);
+      return;
+    }
+
+    setShowNoCoordsNotice(true);
+    const timer = window.setTimeout(() => setShowNoCoordsNotice(false), 4200);
+    return () => window.clearTimeout(timer);
+  }, [status, places.length, mappedPlaces.length]);
 
   useEffect(() => {
     if (!YANDEX_MAPS_API_KEY) {
@@ -952,7 +1097,7 @@ function YandexPlacesMap({ places, totalPlaces, selected, onSelect, t }: { place
       {status === "error" && <MapMessage icon="warn" title="Карта не загрузилась" text="Проверьте ключ Yandex Maps и доступ к api-maps.yandex.ru." />}
       {status === "ready" && totalPlaces === 0 && showEmptyNotice && <MapMessage icon="pin" title="Мест пока нет" text="Добавьте первое место, и оно появится на карте." />}
       {status === "ready" && totalPlaces > 0 && places.length === 0 && <MapMessage icon="pin" title={t("empty_places")} text={t("empty_places_sub")} />}
-      {status === "ready" && places.length > 0 && mappedPlaces.length === 0 && <MapMessage icon="pin" title="Нет координат" text="У этих мест не заполнены latitude/longitude в админке." />}
+      {status === "ready" && places.length > 0 && mappedPlaces.length === 0 && showNoCoordsNotice && <MapMessage icon="pin" title="Нет координат" text="У этих мест не заполнены latitude/longitude в админке." />}
     </div>
   );
 }
@@ -962,7 +1107,7 @@ function MapMessage({ icon, title, text }: { icon: string; title: string; text: 
 }
 
 function SuggestList({ items, onSelect, powered }: { items: YandexSuggestion[]; onSelect: (item: YandexSuggestion) => void; powered: string }) {
-  return <div className="suggest-list">{items.map((item) => <button key={item.value} className="suggest-item" onMouseDown={(event) => event.preventDefault()} onClick={() => onSelect(item)}><Icon name="pin" /><span><b>{item.title}</b><small>{item.subtitle}</small></span></button>)}<div className="suggest-powered"><Icon name="pin" size={12} />{powered}</div></div>;
+  return <div className="suggest-list">{items.map((item, index) => <button key={suggestionKey(item, index)} className="suggest-item" onMouseDown={(event) => event.preventDefault()} onClick={() => onSelect(item)}><Icon name="pin" /><span><b>{item.title}</b><small>{item.subtitle}</small></span></button>)}<div className="suggest-powered"><Icon name="pin" size={12} />{powered}</div></div>;
 }
 
 function SuggestEmpty({ text }: { text: string }) {
@@ -974,7 +1119,56 @@ function PlaceScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
   if (!place) {
     return <StateView icon="pin" title={ctx.t("empty_places")} sub={ctx.t("empty_places_sub")} />;
   }
-  const [supported, setSupported] = useState(false);
+  const hasDescription = Boolean(place.desc?.trim());
+  const amenities = place.amenities.filter(Boolean);
+  const hasAmenities = amenities.length > 0;
+  const hasRent = Boolean(place.rent?.trim());
+  const pros = place.pros.filter((item) => item.trim());
+  const cons = place.cons.filter((item) => item.trim());
+  const hasProsCons = pros.length > 0 || cons.length > 0;
+  const hasAuthorComment = Boolean(place.author?.trim() || place.note?.trim());
+  const [supported, setSupported] = useState(Boolean(place.supported));
+  const [optimisticVote, setOptimisticVote] = useState(false);
+  const [supporting, setSupporting] = useState(false);
+  const voteBaseRef = useRef({ placeId: place.id, votes: place.votes });
+  if (voteBaseRef.current.placeId !== place.id) {
+    voteBaseRef.current = { placeId: place.id, votes: place.votes };
+  }
+  useEffect(() => {
+    setSupported(Boolean(place.supported));
+    setOptimisticVote(false);
+    voteBaseRef.current = { placeId: place.id, votes: place.votes };
+  }, [place.id, place.supported, place.votes]);
+  useEffect(() => {
+    if (optimisticVote && place.votes >= voteBaseRef.current.votes + 1) {
+      setOptimisticVote(false);
+      voteBaseRef.current = { placeId: place.id, votes: place.votes };
+    }
+  }, [optimisticVote, place.id, place.votes]);
+  const support = async () => {
+    if (supported || supporting) {
+      ctx.toast(ctx.t("supported"), "check");
+      return;
+    }
+    setSupported(true);
+    setOptimisticVote(true);
+    setSupporting(true);
+    try {
+      const result = (await ctx.supportPlace(place.id)) as { created?: boolean; votes_count?: number } | undefined;
+      if (result?.created === false || typeof result?.votes_count === "number") {
+        setOptimisticVote(false);
+        voteBaseRef.current = { placeId: place.id, votes: result.votes_count ?? place.votes };
+      }
+      ctx.toast(ctx.t("toast_supported"), "heart");
+    } catch (error) {
+      console.error("Place support failed", error);
+      setSupported(false);
+      setOptimisticVote(false);
+      ctx.toast(getErrorText(error, "Не удалось засчитать голос"), "warn");
+    } finally {
+      setSupporting(false);
+    }
+  };
   return (
     <div className="scroll screen-anim">
       <div className="ph hero-photo">фото / галерея места</div>
@@ -984,27 +1178,24 @@ function PlaceScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
           <p className="muted row"><Icon name="pin" size={15} stroke={2} />{place.address}</p>
           <p className="hint indent">{place.district}</p>
         </div>
-        <div className="stat-row"><StatBox label={ctx.t("price_approx")} value={money(place.price)} /><StatBox label={ctx.t("capacity")} value={`${place.capacity} ${ctx.t("people")}`} /><StatBox label={ctx.t("votes")} value={place.votes} c="green" icon="heart" /></div>
-        <Card><p className="muted paragraph">{place.desc}</p></Card>
-        <SectionLabel>{ctx.t("whats_there")}</SectionLabel>
-        <div className="amen-grid">{place.amenities.map((amenity) => <div key={amenity} className="amen"><Icon name={amenity} size={19} />{ctx.t(`am_${amenity}`)}</div>)}</div>
-        <SectionLabel>{ctx.t("rent_terms")}</SectionLabel>
-        <Card><p>{place.rent}</p></Card>
-        <div className="two-col">
-          <Card className="tone-top-green"><b>{ctx.t("pros")}</b>{place.pros.map((item) => <p key={item}>{item}</p>)}</Card>
-          <Card className="tone-top-red"><b>{ctx.t("cons")}</b>{place.cons.map((item) => <p key={item}>{item}</p>)}</Card>
-        </div>
-        <SectionLabel>{ctx.t("author_note")}</SectionLabel>
-        <Card><div className="row top-align"><Avatar name={place.author} /><div><b>{place.author}</b><p className="muted paragraph">{place.note}</p></div></div></Card>
+        <div className="stat-row"><StatBox label={ctx.t("price_approx")} value={money(place.price)} /><StatBox label={ctx.t("capacity")} value={`${place.capacity} ${ctx.t("people")}`} /><StatBox label={ctx.t("votes")} value={place.votes + (optimisticVote ? 1 : 0)} c="green" icon="heart" /></div>
+        {hasDescription && <Card><p className="muted paragraph">{place.desc}</p></Card>}
+        {hasAmenities && <><SectionLabel>{ctx.t("whats_there")}</SectionLabel><div className="amen-grid">{amenities.map((amenity) => <div key={amenity} className="amen"><Icon name={amenity} size={19} />{ctx.t(`am_${amenity}`)}</div>)}</div></>}
+        {hasRent && <><SectionLabel>{ctx.t("rent_terms")}</SectionLabel><Card><p>{place.rent}</p></Card></>}
+        {hasProsCons && <div className="two-col">
+          {pros.length > 0 && <Card className="tone-top-green"><b>{ctx.t("pros")}</b>{pros.map((item) => <p key={item}>{item}</p>)}</Card>}
+          {cons.length > 0 && <Card className="tone-top-red"><b>{ctx.t("cons")}</b>{cons.map((item) => <p key={item}>{item}</p>)}</Card>}
+        </div>}
+        {hasAuthorComment && <><SectionLabel>{ctx.t("author_note")}</SectionLabel><Card><div className="row top-align">{place.author && <Avatar name={place.author} />}<div className="author-comment">{place.author && <b>{place.author}</b>}{place.note && <p className="muted paragraph">{place.note}</p>}</div></div></Card></>}
         <button className="btn btn-ghost btn-sm center-self" onClick={() => ctx.nav.push("addplace")}><Icon name="plus" size={16} />{ctx.t("suggest_other")}</button>
       </div>
-      <BottomAction><div className="row"><Btn variant="secondary" icon="route" onClick={() => window.open(yandexPlaceUrl(place), "_blank", "noopener,noreferrer")}>{ctx.t("route")}</Btn><Btn full variant={supported ? "tinted" : "primary"} icon={supported ? "check" : "heart"} onClick={() => { if (!supported) { setSupported(true); ctx.toast(ctx.t("toast_supported"), "heart"); } }}>{supported ? ctx.t("supported") : ctx.t("support")}</Btn></div></BottomAction>
+      <BottomAction><div className="row"><Btn variant="secondary" icon="route" onClick={() => window.open(yandexPlaceUrl(place), "_blank", "noopener,noreferrer")}>{ctx.t("route")}</Btn><Btn full variant={supported ? "tinted" : "primary"} icon={supported ? "check" : "heart"} disabled={supporting} onClick={support}>{supported ? ctx.t("supported") : ctx.t("support")}</Btn></div></BottomAction>
     </div>
   );
 }
 
 function AddPlaceScreen({ ctx }: { ctx: Ctx }) {
-  const [form, setForm] = useState({ name: "", address: "", coords: null as null | { lat: number; lng: number }, price: "", capacity: "", desc: "", amen: [] as string[], note: "" });
+  const [form, setForm] = useState({ name: "", address: "", yandexUri: "", coords: null as null | { lat: number; lng: number }, price: "", capacity: "", desc: "", amen: [] as string[], note: "" });
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [focusedSuggest, setFocusedSuggest] = useState<"name" | "address" | null>(null);
   const [nameSuggestions, setNameSuggestions] = useState<YandexSuggestion[]>([]);
@@ -1015,36 +1206,26 @@ function AddPlaceScreen({ ctx }: { ctx: Ctx }) {
   const [addressSuggestTouched, setAddressSuggestTouched] = useState(false);
   const [resolvingPlace, setResolvingPlace] = useState(false);
   const set = (key: keyof typeof form, value: unknown) => setForm((state) => ({ ...state, [key]: value }));
-  const applyNameSuggestion = async (suggestion: YandexSuggestion) => {
+  const applyNameSuggestion = (suggestion: YandexSuggestion) => {
     setFocusedSuggest(null);
-    let details: Awaited<ReturnType<typeof geocodeYandexSuggestion>> = null;
-    try {
-      details = await geocodeYandexSuggestion(suggestion);
-    } catch {
-      details = null;
-    }
     const fallbackAddress = suggestion.address || suggestion.subtitle || suggestion.value;
     setForm((state) => ({
       ...state,
-      name: details?.name || suggestion.title,
-      address: details?.address || fallbackAddress,
-      coords: details?.coords ?? suggestion.coords ?? state.coords,
+      name: suggestion.title,
+      address: fallbackAddress,
+      yandexUri: suggestion.uri ?? "",
+      coords: suggestion.coords ?? state.coords,
     }));
     setErrors((state) => ({ ...state, name: null, address: null }));
   };
-  const applyAddressSuggestion = async (suggestion: YandexSuggestion) => {
+  const applyAddressSuggestion = (suggestion: YandexSuggestion) => {
     setFocusedSuggest(null);
-    let details: Awaited<ReturnType<typeof geocodeYandexSuggestion>> = null;
-    try {
-      details = await geocodeYandexSuggestion(suggestion);
-    } catch {
-      details = null;
-    }
     const fallbackAddress = suggestion.address || suggestion.subtitle || suggestion.value;
     setForm((state) => ({
       ...state,
-      address: details?.address || fallbackAddress,
-      coords: details?.coords ?? suggestion.coords ?? state.coords,
+      address: fallbackAddress,
+      yandexUri: suggestion.uri ?? "",
+      coords: suggestion.coords ?? state.coords,
     }));
     setErrors((state) => ({ ...state, address: null }));
   };
@@ -1124,11 +1305,11 @@ function AddPlaceScreen({ ctx }: { ctx: Ctx }) {
     if (Object.keys(nextErrors).length) return setErrors(nextErrors);
     setResolvingPlace(true);
     try {
-      const details = form.coords ? null : await geocodePlaceInput(form.name.trim(), form.address.trim());
-      const coords = form.coords ?? details?.coords;
-      await ctx.createPlace({
+      const coords = form.coords;
+      const payload = {
         title: form.name.trim(),
-        address: details?.address || form.address.trim(),
+        address: form.address.trim(),
+        yandexUri: form.yandexUri || undefined,
         latitude: coords?.lat,
         longitude: coords?.lng,
         estimatedPrice: Number(form.price || 0),
@@ -1136,15 +1317,14 @@ function AddPlaceScreen({ ctx }: { ctx: Ctx }) {
         description: form.desc.trim(),
         amenities: form.amen,
         authorComment: form.note.trim(),
-      });
+      };
+      await ctx.createPlace(payload);
       ctx.toast(ctx.t("toast_saved"));
       ctx.nav.pop();
     } catch (error) {
+      console.error("Place creation failed", error);
       setErrors({
-        name:
-          error instanceof Error
-            ? error.message
-            : "Не удалось добавить место. Проверьте событие, группу и соединение.",
+        name: getErrorText(error, "Не удалось добавить место. Проверьте событие, группу и соединение."),
       });
     } finally {
       setResolvingPlace(false);
@@ -1155,13 +1335,13 @@ function AddPlaceScreen({ ctx }: { ctx: Ctx }) {
       <div className="screen-pad gap12">
         <div className="ph add-photo">+ добавить фото места</div>
         <Field label={ctx.t("item_name")} error={errors.name}>
-          <div className="suggest"><Input value={form.name} prefix={<Icon name="search" size={17} />} loading={nameSuggestLoading} onFocus={() => setFocusedSuggest("name")} onChange={(value) => { setForm((state) => ({ ...state, name: value, coords: null })); setErrors((state) => ({ ...state, name: null })); }} placeholder="Например, Dostyk Plaza" />
+          <div className="suggest"><Input value={form.name} prefix={<Icon name="search" size={17} />} loading={nameSuggestLoading} onFocus={() => setFocusedSuggest("name")} onChange={(value) => { setForm((state) => ({ ...state, name: value, yandexUri: "", coords: null })); setErrors((state) => ({ ...state, name: null })); }} placeholder="Например, Dostyk Plaza" />
             {focusedSuggest === "name" && nameSuggestions.length > 0 && <SuggestList items={nameSuggestions} onSelect={applyNameSuggestion} powered={ctx.t("powered_geosuggest")} />}
             {focusedSuggest === "name" && !nameSuggestLoading && nameSuggestTouched && form.name.trim().length >= 2 && nameSuggestions.length === 0 && <SuggestEmpty text="Ничего не найдено. Проверьте ключ Yandex Suggest API или уточните запрос." />}
           </div>
         </Field>
         <Field label={ctx.t("address")} error={errors.address} hint={!form.coords ? ctx.t("address_hint") : undefined}>
-          <div className="suggest"><Input value={form.address} prefix={<Icon name="search" size={17} />} loading={addressSuggestLoading} onFocus={() => setFocusedSuggest("address")} onChange={(value) => { setForm((state) => ({ ...state, address: value, coords: null })); setErrors((state) => ({ ...state, address: null })); }} placeholder="Начните вводить адрес" />
+          <div className="suggest"><Input value={form.address} prefix={<Icon name="search" size={17} />} loading={addressSuggestLoading} onFocus={() => setFocusedSuggest("address")} onChange={(value) => { setForm((state) => ({ ...state, address: value, yandexUri: "", coords: null })); setErrors((state) => ({ ...state, address: null })); }} placeholder="Начните вводить адрес" />
             {focusedSuggest === "address" && addressSuggestions.length > 0 && <SuggestList items={addressSuggestions} onSelect={applyAddressSuggestion} powered={ctx.t("powered_geosuggest")} />}
             {focusedSuggest === "address" && !addressSuggestLoading && addressSuggestTouched && form.address.trim().length >= 2 && addressSuggestions.length === 0 && <SuggestEmpty text="Ничего не найдено. Уточните адрес или проверьте ключ Yandex Suggest API." />}
           </div>
@@ -1425,7 +1605,38 @@ function FinalizeScreen({ ctx }: { ctx: Ctx }) {
 }
 
 function ProfileScreen({ ctx }: { ctx: Ctx }) {
-  return <div className="scroll screen-anim"><div className="screen-pad stack"><Card><div className="row"><Avatar name={ctx.data.me.name} size={56} /><div><h2>{ctx.data.me.name}</h2><p className="muted">{ctx.data.event.title} · {ctx.data.event.school}</p></div></div></Card><SectionLabel>{ctx.t("role")}</SectionLabel><div className="listcard"><div className="lrow"><Icon name={ctx.role === "organizer" ? "lock" : "user"} /><span className="lrow-main">{ctx.t(ctx.role === "organizer" ? "role_organizer" : "role_participant")}</span><Badge color={ctx.role === "organizer" ? "green" : "blue"}>{ctx.t(ctx.role === "organizer" ? "role_organizer" : "role_participant")}</Badge></div></div><SectionLabel>{ctx.t("theme")}</SectionLabel><Segmented value={ctx.themePref} options={[["system", ctx.t("th_system")], ["light", ctx.t("th_light")], ["dark", ctx.t("th_dark")]]} onChange={(value) => ctx.setThemePref(value as ThemePreference)} /><SectionLabel>{ctx.t("language")}</SectionLabel><Segmented value={ctx.lang} options={[["ru", "Русский"], ["kk", "Қазақша"]]} onChange={(value) => ctx.setLang(value as Lang)} /><SectionLabel>{ctx.t("settings")}</SectionLabel><div className="listcard"><button className="lrow" onClick={() => ctx.setNotif(!ctx.notif)}><Icon name="bell" /><span className="lrow-main">{ctx.t("notifications")}</span><Toggle on={ctx.notif} /></button><button className="lrow" onClick={ctx.replayOnboarding}><Icon name="star" /><span className="lrow-main">Показать onboarding</span><Icon name="chevronR" /></button></div><p className="hint center-text">Версия {__APP_VERSION__}</p></div></div>;
+  return (
+    <div className="scroll screen-anim">
+      <div className="screen-pad stack">
+        <Card><div className="row"><Avatar name={ctx.data.me.name} size={56} /><div><h2>{ctx.data.me.name}</h2><p className="muted">{ctx.data.event.title} · {ctx.data.event.school}</p></div></div></Card>
+        <SectionLabel>{ctx.t("role")}</SectionLabel>
+        <div className="listcard"><div className="lrow"><Icon name={ctx.role === "organizer" ? "lock" : "user"} /><span className="lrow-main">{ctx.t(ctx.role === "organizer" ? "role_organizer" : "role_participant")}</span><Badge color={ctx.role === "organizer" ? "green" : "blue"}>{ctx.t(ctx.role === "organizer" ? "role_organizer" : "role_participant")}</Badge></div></div>
+        <SectionLabel>{ctx.t("theme")}</SectionLabel>
+        <Segmented value={ctx.themePref} options={[["system", ctx.t("th_system")], ["light", ctx.t("th_light")], ["dark", ctx.t("th_dark")]]} onChange={(value) => ctx.setThemePref(value as ThemePreference)} />
+        <SectionLabel>{ctx.t("language")}</SectionLabel>
+        <Segmented value={ctx.lang} options={[["ru", "Русский"], ["kk", "Қазақша"]]} onChange={(value) => ctx.setLang(value as Lang)} />
+        <SectionLabel>{ctx.t("settings")}</SectionLabel>
+        <div className="listcard">
+          <button className="lrow" onClick={() => ctx.setNotif(!ctx.notif)}><Icon name="bell" /><span className="lrow-main">{ctx.t("notifications")}</span><Toggle on={ctx.notif} /></button>
+          <button className="lrow" onClick={ctx.replayOnboarding}><Icon name="star" /><span className="lrow-main">Показать onboarding</span><Icon name="chevronR" /></button>
+        </div>
+        <p className="hint center-text">Версия {__APP_VERSION__}</p>
+      </div>
+    </div>
+  );
+}
+
+function AppSkeleton() {
+  return (
+    <div className="scroll screen-anim">
+      <div className="screen-pad stack">
+        <Card><Skeleton h={18} w="58%" /><Skeleton h={12} w="82%" /><Skeleton h={38} w="100%" /></Card>
+        <div className="skeleton-grid"><Card><Skeleton h={22} w="46%" /><Skeleton h={12} w="70%" /></Card><Card><Skeleton h={22} w="52%" /><Skeleton h={12} w="66%" /></Card></div>
+        <SectionLabel> </SectionLabel>
+        {[0, 1, 2].map((item) => <Card key={item}><Skeleton h={16} w="62%" /><Skeleton h={12} w="88%" /><Skeleton h={12} w="54%" /></Card>)}
+      </div>
+    </div>
+  );
 }
 
 function StatesScreen({ ctx }: { ctx: Ctx }) {
@@ -1492,7 +1703,7 @@ function PlaceListCard({ place, ctx, compact }: { place: Place; ctx: Ctx; compac
 }
 
 function MapSheet({ place, ctx, onClose }: { place: Place; ctx: Ctx; onClose: () => void }) {
-  return <div className="map-sheet"><div className="row-between"><Badge color={interestColor[place.interest]}>{ctx.t(interestKeys[place.interest])}</Badge><button className="topbar-btn small" onClick={onClose}><Icon name="x" size={18} /></button></div><div className="row top-align"><div className="ph sheet-photo">фото</div><div className="spread"><b>{place.name}</b><small>{place.district}</small><div className="row"><span className="num">{money(place.price)}</span><span className="muted">{place.capacity} {ctx.t("people")}</span></div></div></div><div className="row"><Btn variant="secondary" size="sm" icon="route" onClick={() => window.open(yandexPlaceUrl(place), "_blank", "noopener,noreferrer")}>{ctx.t("route")}</Btn><Btn size="sm" full onClick={() => ctx.nav.push("place", { id: place.id })}>{ctx.t("open")}</Btn></div></div>;
+  return <div className="map-sheet"><div className="row-between"><Badge color={interestColor[place.interest]}>{ctx.t(interestKeys[place.interest])}</Badge><button className="topbar-btn small" onClick={onClose}><Icon name="x" size={18} /></button></div><div className="row top-align"><div className="ph sheet-photo">фото</div><div className="spread place-main"><b>{place.name}</b><small>{place.address || place.district}</small><div className="row place-meta"><span className="num">{money(place.price)}</span><span className="muted">{place.capacity} {ctx.t("people")}</span></div></div></div><div className="map-sheet-actions"><Btn variant="secondary" size="sm" icon="route" onClick={() => window.open(yandexPlaceUrl(place), "_blank", "noopener,noreferrer")}>{ctx.t("route")}</Btn><Btn size="sm" full onClick={() => ctx.nav.push("place", { id: place.id })}>{ctx.t("open")}</Btn></div></div>;
 }
 
 function MapLoading({ t }: { t: (key: string) => string }) {
@@ -1549,7 +1760,7 @@ function Stepper({ value, onChange }: { value: number; onChange: (value: number)
 
 function Avatar({ name, size = 38 }: { name: string; size?: number }) {
   const initials = name.split(" ").slice(0, 2).map((part) => part[0]).join("").toUpperCase();
-  return <div className="avatar" style={{ width: size, height: size, fontSize: size * 0.38 }}>{initials}</div>;
+  return <div className="avatar" style={{ width: size, height: size, fontSize: size * 0.38 }}><span>{initials}</span></div>;
 }
 
 function Segmented({ value, options, onChange }: { value: string; options: Array<[string, string]>; onChange: (value: string) => void }) {

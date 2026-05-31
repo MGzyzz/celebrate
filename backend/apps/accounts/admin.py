@@ -11,8 +11,8 @@ class TelegramUserAdmin(admin.ModelAdmin):
 
 @admin.register(StudentGroup)
 class StudentGroupAdmin(admin.ModelAdmin):
-    list_display = ("name", "telegram_chat_id", "currency", "created_at")
-    search_fields = ("name", "telegram_chat_id")
+    list_display = ("name", "invite_code", "telegram_chat_id", "currency", "created_at")
+    search_fields = ("name", "invite_code", "telegram_chat_id")
 
 
 @admin.register(Membership)

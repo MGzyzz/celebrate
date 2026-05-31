@@ -1,4 +1,10 @@
+import secrets
+
 from django.db import models
+
+
+def generate_invite_code() -> str:
+    return secrets.token_urlsafe(6).replace("-", "").replace("_", "").upper()[:8]
 
 
 class TelegramUser(models.Model):
@@ -25,6 +31,7 @@ class TelegramUser(models.Model):
 class StudentGroup(models.Model):
     name = models.CharField(max_length=255)
     telegram_chat_id = models.BigIntegerField(null=True, blank=True)
+    invite_code = models.CharField(max_length=16, unique=True, db_index=True, default=generate_invite_code)
     currency = models.CharField(max_length=8, default="KZT")
     created_at = models.DateTimeField(auto_now_add=True)
 

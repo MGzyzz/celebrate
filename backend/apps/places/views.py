@@ -1,9 +1,13 @@
+from decimal import Decimal, InvalidOperation
+
+from django.conf import settings
 from django.db.models import Count
-from rest_framework import exceptions, response, status, views, viewsets
+from rest_framework import decorators, exceptions, response, status, views, viewsets
 
 from apps.accounts.models import Membership
 from apps.accounts.services import TelegramAuthError, upsert_telegram_user_from_init_data, validate_telegram_init_data
 from apps.events.models import Event
+from apps.places.geocoding import geocode_place_with_diagnostics
 from apps.places.models import PlaceIdea, PlaceVote
 from apps.places.serializers import PlaceIdeaSerializer, PlaceVoteSerializer
 
@@ -26,6 +30,15 @@ def _current_event(group):
     ).first()
 
 
+def _parse_coordinate(value, field_name):
+    if value in ("", None):
+        return None, None
+    try:
+        return Decimal(str(value)), None
+    except (InvalidOperation, TypeError, ValueError):
+        return None, f"Некорректное значение {field_name}: {value}."
+
+
 class CurrentPlaceCreateView(views.APIView):
     authentication_classes = []
     permission_classes = []
@@ -46,6 +59,7 @@ class CurrentPlaceCreateView(views.APIView):
             return response.Response({"detail": "Укажите название места."}, status=status.HTTP_400_BAD_REQUEST)
         if not address:
             return response.Response({"detail": "Укажите адрес места."}, status=status.HTTP_400_BAD_REQUEST)
+        yandex_uri = str(request.data.get("yandexUri", "")).strip()
 
         try:
             estimated_price = int(request.data.get("estimatedPrice", 0) or 0)
@@ -53,8 +67,43 @@ class CurrentPlaceCreateView(views.APIView):
         except (TypeError, ValueError):
             return response.Response({"detail": "Цена и вместимость должны быть целыми числами."}, status=status.HTTP_400_BAD_REQUEST)
 
-        latitude = request.data.get("latitude")
-        longitude = request.data.get("longitude")
+        latitude, latitude_error = _parse_coordinate(request.data.get("latitude"), "latitude")
+        longitude, longitude_error = _parse_coordinate(request.data.get("longitude"), "longitude")
+        if latitude_error or longitude_error:
+            return response.Response(
+                {
+                    "detail": latitude_error or longitude_error,
+                    "source": "places.create.coordinates",
+                    "code": "invalid_coordinates",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if latitude is None or longitude is None:
+            if not settings.YANDEX_GEOCODER_API_KEY:
+                return response.Response(
+                    {
+                        "detail": "Не удалось определить координаты: backend YANDEX_GEOCODER_API_KEY не настроен.",
+                        "source": "places.create.geocoding",
+                        "code": "yandex_key_missing",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            coords, geocoding_failure = geocode_place_with_diagnostics(title, address, yandex_uri)
+            if not coords:
+                return response.Response(
+                    {
+                        "detail": geocoding_failure.detail
+                        if geocoding_failure
+                        else "Не удалось определить координаты по названию и адресу. Уточните адрес или выберите подсказку Yandex.",
+                        "source": "places.create.geocoding",
+                        "code": geocoding_failure.code if geocoding_failure else "geocoding_failed",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            latitude, longitude = coords
+
         place = PlaceIdea.objects.create(
             event=event,
             author=user,
@@ -76,6 +125,26 @@ class CurrentPlaceCreateView(views.APIView):
 class PlaceIdeaViewSet(viewsets.ModelViewSet):
     queryset = PlaceIdea.objects.select_related("event", "author").annotate(votes_count=Count("votes"))
     serializer_class = PlaceIdeaSerializer
+
+    @decorators.action(detail=True, methods=["post"], authentication_classes=[], permission_classes=[])
+    def support(self, request, pk=None):
+        user = _telegram_user(request)
+        place = self.get_object()
+        membership = Membership.objects.filter(user=user, group=place.event.group).first()
+        if not membership:
+            raise exceptions.PermissionDenied("Пользователь не состоит в группе этого события.")
+
+        vote, created = PlaceVote.objects.get_or_create(place=place, user=user)
+        votes_count = place.votes.count()
+        return response.Response(
+            {
+                "id": vote.id,
+                "place": place.id,
+                "created": created,
+                "votes_count": votes_count,
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
 
 class PlaceVoteViewSet(viewsets.ModelViewSet):

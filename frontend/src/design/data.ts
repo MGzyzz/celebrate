@@ -9,6 +9,7 @@ export function moneyShort(value: number) {
 }
 
 export const data = {
+  needsGroupCode: false,
   event: {
     id: "e1",
     title: "Выпускной 11 «А»",
@@ -27,6 +28,7 @@ export const data = {
       name: "Лофт «Высота»",
       interest: "high",
       votes: 18,
+      supported: false,
       address: "ул. Абая, 145, 7 этаж",
       district: "Бостандыкский р-н · 3.2 км",
       price: 220000,
@@ -48,6 +50,7 @@ export const data = {
       name: "Загородный дом «Сосны»",
       interest: "debate",
       votes: 11,
+      supported: false,
       address: "пос. Каменское плато, 12",
       district: "За городом · 18 км",
       price: 180000,
@@ -69,6 +72,7 @@ export const data = {
       name: "Ресторан «Достар»",
       interest: "new",
       votes: 6,
+      supported: false,
       address: "пр. Достык, 89",
       district: "Медеуский р-н · 4.1 км",
       price: 320000,
@@ -90,6 +94,7 @@ export const data = {
       name: "Антикафе «Облака»",
       interest: "low",
       votes: 2,
+      supported: false,
       address: "ул. Желтоксан, 37",
       district: "Алмалинский р-н · 2.0 км",
       price: 90000,
@@ -111,6 +116,7 @@ export const data = {
       name: "Веранда «Парк»",
       interest: "problem",
       votes: 4,
+      supported: false,
       address: "Центральный парк, вход 2",
       district: "Медеуский р-н · 5.3 км",
       price: 410000,

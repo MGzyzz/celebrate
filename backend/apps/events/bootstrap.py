@@ -2,7 +2,7 @@ from django.db.models import Count
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.models import Membership, StudentGroup
+from apps.accounts.models import Membership
 from apps.accounts.serializers import TelegramUserSerializer
 from apps.accounts.services import TelegramAuthError, upsert_telegram_user_from_init_data, validate_telegram_init_data
 from apps.events.models import Event, Participation
@@ -27,6 +27,8 @@ class BootstrapView(APIView):
             return Response(
                 {
                     "user": TelegramUserSerializer(user).data,
+                    "me": self._user_payload(user),
+                    "needsGroupCode": not group,
                     "event": None,
                     "places": [],
                     "collections": [],
@@ -44,7 +46,7 @@ class BootstrapView(APIView):
                 "user": TelegramUserSerializer(user).data,
                 "event": self._event_payload(event),
                 "me": self._me_payload(user, event),
-                "places": [self._place_payload(place, index) for index, place in enumerate(self._places(event))],
+                "places": [self._place_payload(place, index, user) for index, place in enumerate(self._places(event))],
                 "collections": [self._fundraising_payload(fundraising) for fundraising in fundraisings],
                 "items": [self._item_payload(item) for item in self._items(active_fundraising)],
                 "participants": [self._participant_payload(participation, active_fundraising) for participation in self._participants(event)],
@@ -57,7 +59,7 @@ class BootstrapView(APIView):
         membership = Membership.objects.select_related("group").filter(user=user).first()
         if membership:
             return membership.group
-        return StudentGroup.objects.order_by("created_at").first()
+        return None
 
     @staticmethod
     def _get_event(group):
@@ -82,6 +84,15 @@ class BootstrapView(APIView):
         }
 
     @staticmethod
+    def _user_payload(user):
+        return {
+            "id": str(user.id),
+            "name": user.first_name,
+            "role": Membership.Role.PARTICIPANT,
+            "participation": "none",
+        }
+
+    @staticmethod
     def _me_payload(user, event):
         participation = event.participations.filter(user=user).first()
         membership = Membership.objects.filter(user=user, group=event.group).first()
@@ -102,7 +113,7 @@ class BootstrapView(APIView):
         return event.place_ideas.annotate(votes_count=Count("votes")).order_by("-votes_count", "-created_at")
 
     @staticmethod
-    def _place_payload(place, index):
+    def _place_payload(place, index, user):
         # Temporary visual coordinates for the placeholder map until real Yandex Maps is connected.
         x = 24 + (index * 13) % 56
         y = 24 + (index * 17) % 52
@@ -117,6 +128,7 @@ class BootstrapView(APIView):
                 "red": "problem",
             }.get(place.interest_color, "new"),
             "votes": place.votes_count,
+            "supported": place.votes.filter(user=user).exists(),
             "address": place.address,
             "district": place.address,
             "price": place.estimated_price,
