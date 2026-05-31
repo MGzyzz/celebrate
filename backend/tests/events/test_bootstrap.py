@@ -78,3 +78,26 @@ def test_build_invoice_map_returns_empty_for_none():
     """_build_invoice_map(None) must return empty dict without error."""
     result = BootstrapView._build_invoice_map(None)
     assert result == {}
+
+
+@pytest.mark.django_db
+def test_me_payload_defaults_participant_to_in(group, event):
+    """A participant without a Participation row is created as participating by default."""
+    user = TelegramUser.objects.create(telegram_id=8101, first_name="NewParticipant")
+    Membership.objects.create(user=user, group=group, role=Membership.Role.PARTICIPANT)
+
+    payload = BootstrapView._me_payload(user, event)
+
+    assert payload["participation"] == "in"
+    participation = Participation.objects.get(event=event, user=user)
+    assert participation.status == Participation.Status.PARTICIPATING
+
+
+@pytest.mark.django_db
+def test_me_payload_maps_existing_backend_status(group, event):
+    """Backend statuses must be converted to frontend status keys."""
+    user = make_participant(group, event, 8102, "Thinking", status=Participation.Status.THINKING)
+
+    payload = BootstrapView._me_payload(user, event)
+
+    assert payload["participation"] == "maybe"

@@ -64,6 +64,10 @@ class JoinGroupByCodeView(APIView):
             "-created_at"
         ).first()
         if event:
-            Participation.objects.get_or_create(user=user, event=event)
+            Participation.objects.get_or_create(
+                user=user,
+                event=event,
+                defaults={"status": Participation.Status.PARTICIPATING},
+            )
 
         return Response({"membership": MembershipSerializer(membership).data})

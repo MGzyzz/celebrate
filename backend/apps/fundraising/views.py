@@ -151,6 +151,51 @@ class CurrentPriceItemCreateView(views.APIView):
         return response.Response(PriceItemSerializer(item).data, status=status.HTTP_201_CREATED)
 
 
+class CurrentFundraisingFinalizeView(views.APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        user = _telegram_user(request)
+        membership = _require_organizer(user)
+        event = _current_event(membership.group)
+        if not event:
+            return response.Response({"detail": "Сначала создайте событие."}, status=status.HTTP_400_BAD_REQUEST)
+
+        fundraising = event.fundraisings.filter(
+            status__in=[Fundraising.Status.ACTIVE, Fundraising.Status.DRAFT]
+        ).order_by("-created_at").first()
+        if not fundraising:
+            return response.Response({"detail": "Сначала создайте активный сбор."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not fundraising.items.filter(status=PriceItem.Status.APPROVED).exists():
+            return response.Response({"detail": "Нет утверждённых товаров."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not fundraising.event.participations.filter(status=Participation.Status.PARTICIPATING).exists():
+            return response.Response(
+                {"detail": "Нет участников со статусом «Участвует»."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        invoices = finalize_fundraising(fundraising)
+
+        from apps.events.notifications import send_finalize_notifications
+        send_finalize_notifications(fundraising, invoices)
+
+        data = [
+            {
+                "userId": str(invoice.user.id),
+                "name": str(invoice.user),
+                "amount": invoice.amount,
+                "common": invoice.common_amount,
+                "alcohol": invoice.alcohol_amount,
+                "individual": invoice.individual_amount,
+            }
+            for invoice in invoices
+        ]
+        return response.Response(data, status=status.HTTP_200_OK)
+
+
 class FundraisingViewSet(viewsets.ModelViewSet):
     queryset = Fundraising.objects.select_related("event", "event__group").all()
     serializer_class = FundraisingSerializer
@@ -195,6 +240,39 @@ class PriceItemViewSet(viewsets.ModelViewSet):
         fundraising = Fundraising.objects.get(pk=fundraising_id)
         items = find_duplicate_items(fundraising, query)
         return response.Response(PriceItemSerializer(items, many=True).data)
+
+
+class PriceItemStatusView(views.APIView):
+    authentication_classes = []
+    permission_classes = []
+    _new_status: str = ""
+
+    def post(self, request, pk):
+        user = _telegram_user(request)
+        membership = _require_organizer(user)
+        try:
+            item = PriceItem.objects.select_related("fundraising__event__group").get(pk=pk)
+        except PriceItem.DoesNotExist:
+            return response.Response({"detail": "Товар не найден."}, status=status.HTTP_404_NOT_FOUND)
+        if item.fundraising.event.group_id != membership.group_id:
+            raise exceptions.PermissionDenied("Нельзя изменять товары другой группы.")
+        item.status = self._new_status
+        try:
+            item.save()
+        except DjangoValidationError as exc:
+            return response.Response(
+                {"detail": "; ".join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return response.Response(PriceItemSerializer(item).data)
+
+
+class ApprovePriceItemView(PriceItemStatusView):
+    _new_status = PriceItem.Status.APPROVED
+
+
+class RejectPriceItemView(PriceItemStatusView):
+    _new_status = PriceItem.Status.REJECTED
 
 
 class PriceItemSupportViewSet(viewsets.ModelViewSet):

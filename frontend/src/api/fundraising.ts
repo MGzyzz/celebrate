@@ -31,3 +31,15 @@ export async function createPriceItem(payload: CreatePriceItemPayload) {
     body: JSON.stringify(payload),
   });
 }
+
+export async function approvePriceItem(id: string): Promise<unknown> {
+  return apiRequest(`/price-items/${id}/approve/`, { method: "POST" });
+}
+
+export async function rejectPriceItem(id: string): Promise<unknown> {
+  return apiRequest(`/price-items/${id}/reject/`, { method: "POST" });
+}
+
+export async function finalizeFundraising(): Promise<unknown> {
+  return apiRequest("/fundraisings/current/finalize/", { method: "POST" });
+}

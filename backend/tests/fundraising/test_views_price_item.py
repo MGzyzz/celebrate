@@ -9,9 +9,19 @@ FAKE_INIT = "fake-init-data"
 
 
 def _client(monkeypatch, user):
+    from apps.accounts import middleware as mw
     from apps.accounts import services as svc
-    monkeypatch.setattr(svc, "validate_telegram_init_data", lambda _: {"id": user.telegram_id})
-    monkeypatch.setattr(svc, "upsert_telegram_user_from_init_data", lambda _: user)
+    import apps.fundraising.views as fv
+
+    tg_validate = lambda _: {"id": user.telegram_id}
+    tg_upsert = lambda _: user
+
+    monkeypatch.setattr(svc, "validate_telegram_init_data", tg_validate)
+    monkeypatch.setattr(svc, "upsert_telegram_user_from_init_data", tg_upsert)
+    monkeypatch.setattr(mw, "validate_telegram_init_data", tg_validate)
+    monkeypatch.setattr(fv, "validate_telegram_init_data", tg_validate)
+    monkeypatch.setattr(fv, "upsert_telegram_user_from_init_data", tg_upsert)
+
     c = APIClient()
     c.credentials(HTTP_X_TELEGRAM_INIT_DATA=FAKE_INIT)
     return c

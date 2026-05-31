@@ -274,3 +274,94 @@ All bugs and technical debt from `docs/ARCHITECTURE_ANALYSIS.md` fixed:
 - `FundraisingViewSet` with `finalize` action still exists in `views.py` but is no longer exposed via URLs. Wire up when frontend needs it.
 - `Sheet` component that was flagged in DESIGN_REVIEW.md turned out to be `MapSheet` which IS used — no action needed.
 - All architecture issues from `docs/ARCHITECTURE_ANALYSIS.md` are now resolved. Only remaining item: ModelViewSets scope (fixed) and `bootstrapQuery.retry: false` (low priority — consider `retry: 1` for production).
+
+---
+
+## Session Update 2026-05-31 — In-App Event Create/Edit
+
+### Completed
+
+- Read all files in `docs/` before changing code.
+- Added `POST /api/events/current/` and `PATCH /api/events/current/` via `CurrentEventView`.
+- Registered `events/current/` before DRF router URLs so it is not captured as an event detail route.
+- Added event create/edit tests covering success, missing title, duplicate event, invalid date, participant access denial, patch success, and patch without event.
+- Added `description` to event payloads so the edit form can prefill and preserve the event description.
+- Added `frontend/src/api/events.ts` with `createEvent` and `updateEvent`.
+- Wired create/update event mutations through `frontend/src/App.tsx`.
+- Added `EventSetupScreen` in `DesignApp`:
+  - organizers without an event see the create form on Home;
+  - organizers can open event settings from Profile;
+  - edit mode can clear optional fields by sending empty strings.
+- Fixed an existing price-item test auth helper so it patches Telegram middleware and direct view imports consistently.
+
+### Checks
+
+- `poetry run python manage.py check` — 0 issues.
+- `poetry run pytest` — 22 passed.
+- `npm run lint` — passed.
+- `npm run build` — passed when rerun outside the sandbox; the first sandboxed attempt failed with `spawn EPERM` from Vite/esbuild.
+
+### Notes
+
+- No commit was created because the working tree already had unrelated pending changes from prior work, including deleted scaffold files and modified `DesignApp.tsx`.
+
+---
+
+## Session Update 2026-05-31 — Participation Status Persistence
+
+### Completed
+
+- Changed `Participation.status` default from `unknown` to `participating`.
+- Added migration `backend/apps/events/migrations/0003_participation_default_participating.py`; it updates existing `unknown` participation rows to `participating`.
+- Updated group-code join flow to create participation rows as `participating`.
+- Fixed bootstrap `me.participation` to return frontend status keys (`in`, `out`, `maybe`, `none`) instead of backend enum values.
+- Bootstrap now creates a missing participant participation row as `participating` for participant-role users.
+- Added `PATCH /api/participation/current/` for persisting the current user's participation status.
+- Wired frontend confirm screen to call the new endpoint via React Query instead of only changing local state.
+- Added backend tests for status persistence, default participant status, status mapping, and invalid status handling.
+
+### Checks
+
+- `poetry run python manage.py check` — 0 issues.
+- `poetry run python manage.py makemigrations --check --dry-run` — no changes detected.
+- `poetry run pytest` — 27 passed.
+- `npm run lint` — passed.
+- `npm run build` — passed when rerun outside the sandbox; the sandboxed attempt failed with Vite/esbuild `spawn EPERM`.
+
+### Notes
+
+- Run `poetry run python manage.py migrate` before testing this against an existing local database so the default/data migration is applied.
+
+---
+
+## Session Update 2026-05-31 — In-App Product Approval
+
+### Completed
+
+- Added `POST /api/price-items/{id}/approve/` and `POST /api/price-items/{id}/reject/` endpoints.
+  - Both require organizer role; item must belong to the organizer's group.
+  - Approve validates budget limit (model's `clean()` raises if total would exceed target).
+  - Returns 400 with detail message when budget exceeded.
+  - Returns 403 for participants; 404 for missing items; 403 for cross-group access.
+- Added `status` field to bootstrap `_item_payload`: `"proposed" | "approved" | "rejected" | "purchased"`.
+- Added `approvePriceItem` and `rejectPriceItem` to `frontend/src/api/fundraising.ts`.
+- Added two `useMutation` hooks and `onApproveItem`/`onRejectItem` props to `frontend/src/App.tsx`.
+- Updated `DesignApp.tsx`:
+  - `CollectionScreen` now filters items by `item.status === "approved"` / `"proposed"` (was `item.approved`).
+  - `ItemRow` shows **Утвердить** / **Отклонить** buttons when `ctx.role === "organizer"` and `item.status === "proposed"`.
+  - Buttons show local loading state; show toast on success or failure.
+  - After approve/reject the bootstrap query is invalidated and the list refreshes.
+- Updated mock data in `data.ts` to include `status` field on all items.
+- Added 6 new backend tests in `backend/tests/fundraising/test_views_approve_item.py`.
+
+### Checks
+
+- `poetry run python manage.py check` — 0 issues.
+- `poetry run pytest` — **33 passed** (27 existing + 6 new).
+- `npm run lint` — passed (TypeScript build clean).
+- `npm run build` — passed.
+
+### Notes
+
+- No new migrations — no model changes.
+- Rejected items (`status === "rejected"`) are hidden from both approved and proposed sections in CollectionScreen, which is the intended behavior.

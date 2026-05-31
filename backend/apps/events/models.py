@@ -47,7 +47,7 @@ class Participation(models.Model):
 
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="participations")
     user = models.ForeignKey(TelegramUser, on_delete=models.CASCADE, related_name="participations")
-    status = models.CharField(max_length=32, choices=Status.choices, default=Status.UNKNOWN)
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.PARTICIPATING)
     payment_share = models.CharField(max_length=32, choices=PaymentShare.choices, default=PaymentShare.REGULAR)
     custom_share_amount = models.PositiveIntegerField(
         default=0,

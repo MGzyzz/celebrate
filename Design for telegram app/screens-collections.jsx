@@ -240,6 +240,14 @@ function InvoiceScreen({ ctx }) {
     ...(inv.alcohol ? [{ label: t('part_alcohol'), value: inv.alcohol, c: 'red' }] : []),
     ...(inv.individual ? [{ label: t('part_individual'), value: inv.individual, c: 'amber' }] : []),
   ];
+  const phone = (data.payment && data.payment.phone) || '';
+  const owner = (data.payment && data.payment.owner) || '';
+  const comment = `Выпускной — ${data.me.name}`;
+  const copy = (text, msg) => {
+    if (!text) return;
+    try { navigator.clipboard && navigator.clipboard.writeText(text); } catch (e) {}
+    ctx.toast(msg, 'copy');
+  };
   return (
     <div className="scroll screen-anim">
       <div className="screen-pad stack">
@@ -283,17 +291,53 @@ function InvoiceScreen({ ctx }) {
         {/* instruction */}
         <SectionLabel>{t('pay_instruction')}</SectionLabel>
         <Card>
-          <div style={{ fontSize: 14, lineHeight: 1.5 }}>
-            Переведите сумму на Kaspi организатора <b>+7 707 123 45 67</b> (Дана Қ.) с комментарием <b>«Выпускной — {data.me.name}»</b>.
-          </div>
-          <div className="notice notice-info" style={{ marginTop: 12 }}>
-            <Icon name="info" size={16} stroke={2} className="notice-ic" />
-            <span>{t('confirmed_by_org')}</span>
-          </div>
+          {phone ? (
+            <div className="stack" style={{ gap: 13 }}>
+              {/* Kaspi number */}
+              <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: '12px 13px' }}>
+                <div className="row" style={{ gap: 7, color: 'var(--hint)', fontSize: 12.5, fontWeight: 600 }}>
+                  <Icon name="wallet" size={15} stroke={2} />Kaspi номер
+                </div>
+                <div className="row-between" style={{ marginTop: 7, gap: 10 }}>
+                  <span className="num" style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.01em' }}>{phone}</span>
+                  <button className="copychip" onClick={() => copy(phone, 'Скопировано 👌')}>
+                    <Icon name="copy" size={14} stroke={2} />Скопировать
+                  </button>
+                </div>
+                {owner && <div style={{ fontSize: 12.5, color: 'var(--hint)', marginTop: 5 }}>{owner} · владелец</div>}
+              </div>
+
+              {/* comment */}
+              <div>
+                <div style={{ fontSize: 12.5, color: 'var(--text-2)', fontWeight: 600, marginBottom: 6 }}>Комментарий к переводу</div>
+                <div className="row-between" style={{ background: 'var(--surface-2)', borderRadius: 12, padding: '10px 11px 10px 13px', gap: 10 }}>
+                  <span style={{ fontWeight: 600 }}>{comment}</span>
+                  <button className="copychip copychip-icon" onClick={() => copy(comment, 'Скопировано 👌')} aria-label="Скопировать">
+                    <Icon name="copy" size={16} stroke={2} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="notice notice-info">
+                <Icon name="info" size={16} stroke={2} className="notice-ic" />
+                <span>Организатор подтвердит оплату вручную.</span>
+              </div>
+            </div>
+          ) : (
+            <div className="notice notice-warn">
+              <Icon name="warn" size={16} stroke={2} className="notice-ic" />
+              <span>Организатор не указал номер Kaspi</span>
+            </div>
+          )}
         </Card>
       </div>
       <BottomAction>
-        <Btn full variant="secondary" icon="arrowUR" onClick={() => ctx.toast('Открываю Kaspi', 'wallet')}>Оплатить в Kaspi</Btn>
+        <div className="row" style={{ gap: 10 }}>
+          <Btn variant="secondary" icon="copy" disabled={!phone} style={{ flex: 1 }}
+            onClick={() => copy(phone, 'Номер скопирован')}>Скопировать номер</Btn>
+          <Btn variant="primary" icon="arrowUR" disabled={!phone} style={{ flex: 1 }}
+            onClick={() => window.open('https://kaspi.kz', '_blank')}>Открыть Kaspi</Btn>
+        </div>
       </BottomAction>
     </div>
   );

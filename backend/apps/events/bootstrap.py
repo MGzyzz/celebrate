@@ -10,6 +10,13 @@ from apps.fundraising.models import Fundraising, Invoice, PriceItem
 from apps.places.models import PlaceIdea, PlaceVote
 
 
+PARTICIPATION_STATUS_TO_CLIENT = {
+    Participation.Status.PARTICIPATING: "in",
+    Participation.Status.NOT_PARTICIPATING: "out",
+    Participation.Status.THINKING: "maybe",
+    Participation.Status.UNKNOWN: "none",
+}
+
 _RU_MONTHS = [
     "января", "февраля", "марта", "апреля", "мая", "июня",
     "июля", "августа", "сентября", "октября", "ноября", "декабря",
@@ -37,7 +44,7 @@ class BootstrapView(APIView):
             return Response(
                 {
                     "user": TelegramUserSerializer(user).data,
-                    "me": self._user_payload(user),
+                    "me": self._user_payload(user, group),
                     "needsGroupCode": not group,
                     "event": None,
                     "places": [],
@@ -87,6 +94,7 @@ class BootstrapView(APIView):
         return {
             "id": str(event.id),
             "title": event.title,
+            "description": event.description,
             "school": event.group.name,
             "date": event.event_date.isoformat() if event.event_date else "",
             "dateLabel": _ru_date(event.event_date) if event.event_date else "",
@@ -97,28 +105,43 @@ class BootstrapView(APIView):
         }
 
     @staticmethod
-    def _user_payload(user):
+    def _user_payload(user, group=None):
+        role = Membership.Role.PARTICIPANT
+        if group:
+            membership = Membership.objects.filter(user=user, group=group).first()
+            if membership and membership.role in {Membership.Role.ORGANIZER, Membership.Role.ADMIN}:
+                role = Membership.Role.ORGANIZER
         return {
             "id": str(user.id),
             "name": user.first_name,
-            "role": Membership.Role.PARTICIPANT,
-            "participation": "none",
+            "role": role,
+            "participation": "in",
         }
 
     @staticmethod
     def _me_payload(user, event):
-        participation = event.participations.filter(user=user).first()
         membership = Membership.objects.filter(user=user, group=event.group).first()
         role = (
             Membership.Role.ORGANIZER
             if membership and membership.role in {Membership.Role.ORGANIZER, Membership.Role.ADMIN}
             else Membership.Role.PARTICIPANT
         )
+        participation = event.participations.filter(user=user).first()
+        if not participation and role == Membership.Role.PARTICIPANT:
+            participation = Participation.objects.create(
+                event=event,
+                user=user,
+                status=Participation.Status.PARTICIPATING,
+            )
         return {
             "id": str(user.id),
             "name": user.first_name,
             "role": role,
-            "participation": participation.status if participation else Participation.Status.UNKNOWN,
+            "participation": (
+                PARTICIPATION_STATUS_TO_CLIENT[participation.status]
+                if participation
+                else PARTICIPATION_STATUS_TO_CLIENT[Participation.Status.UNKNOWN]
+            ),
         }
 
     @staticmethod
@@ -204,6 +227,12 @@ class BootstrapView(APIView):
     @staticmethod
     def _item_payload(item):
         item_type = "group" if item.item_type == PriceItem.ItemType.SELECTED_GROUP else item.item_type
+        _status_map = {
+            PriceItem.Status.PROPOSED: "proposed",
+            PriceItem.Status.APPROVED: "approved",
+            PriceItem.Status.REJECTED: "rejected",
+            PriceItem.Status.PURCHASED: "purchased",
+        }
         return {
             "id": str(item.id),
             "name": item.title,
@@ -212,6 +241,7 @@ class BootstrapView(APIView):
             "qty": item.quantity,
             "unit": item.unit,
             "price": item.unit_price,
+            "status": _status_map.get(item.status, "proposed"),
             "approved": item.status == PriceItem.Status.APPROVED,
             "by": item.author.first_name if item.author else "",
             "support": item.supports.count(),
@@ -226,12 +256,7 @@ class BootstrapView(APIView):
         return {
             "id": str(participation.user.id),
             "name": str(participation.user),
-            "participation": {
-                Participation.Status.PARTICIPATING: "in",
-                Participation.Status.NOT_PARTICIPATING: "out",
-                Participation.Status.THINKING: "maybe",
-                Participation.Status.UNKNOWN: "none",
-            }[participation.status],
+            "participation": PARTICIPATION_STATUS_TO_CLIENT[participation.status],
             "payCat": {
                 Participation.PaymentShare.REGULAR: "regular",
                 Participation.PaymentShare.NO_ALCOHOL: "noalco",
@@ -240,6 +265,7 @@ class BootstrapView(APIView):
             }[participation.payment_share],
             "paid": invoice.status == Invoice.Status.PAID if invoice else False,
             "invoice": invoice.amount if invoice else 0,
+            "customShareAmount": participation.custom_share_amount,
         }
 
     @staticmethod

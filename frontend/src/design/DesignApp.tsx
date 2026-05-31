@@ -2,12 +2,14 @@ import {
   Armchair,
   Bed,
   Bell,
+  Calendar,
   Check,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
   Clock,
   CookingPot,
+  Copy,
   CupSoda,
   ExternalLink,
   Flame,
@@ -341,10 +343,24 @@ type ScreenName =
   | "participant"
   | "finalize"
   | "profile"
+  | "eventsetup"
   | "states";
 
 type StackEntry = { name: ScreenName; params?: Record<string, string> };
 type ToastState = { id: number; text: string; icon?: string } | null;
+type ParticipationStatus = "in" | "out" | "maybe" | "none";
+type EventCreatePayload = {
+  title: string;
+  eventDate?: string;
+  description?: string;
+  paymentPhone?: string;
+  paymentHolder?: string;
+};
+type EventUpdatePayload = Partial<EventCreatePayload>;
+
+function normalizeParticipationStatus(status: string): ParticipationStatus {
+  return status === "out" || status === "maybe" || status === "none" ? status : "in";
+}
 
 type Ctx = {
   data: AppData;
@@ -380,6 +396,18 @@ type Ctx = {
   supportPlace: (placeId: string) => Promise<unknown>;
   joinGroup: (code: string) => Promise<unknown>;
   isJoiningGroup: boolean;
+  createEvent: (payload: EventCreatePayload) => Promise<unknown>;
+  isCreatingEvent: boolean;
+  updateEvent: (payload: EventUpdatePayload) => Promise<unknown>;
+  isUpdatingEvent: boolean;
+  updateParticipation: (status: ParticipationStatus) => Promise<unknown>;
+  isUpdatingParticipation: boolean;
+  approveItem: (id: string) => Promise<unknown>;
+  rejectItem: (id: string) => Promise<unknown>;
+  finalize: () => Promise<unknown>;
+  isFinalizing: boolean;
+  updateParticipationShare: (payload: { userId: string; paymentShare: string; customShareAmount?: number }) => Promise<unknown>;
+  isUpdatingParticipationShare: boolean;
 };
 
 const ROOT: Record<Tab, ScreenName> = {
@@ -454,11 +482,13 @@ const iconMap = {
   wallet: Wallet,
   search: Search,
   bell: Bell,
+  calendar: Calendar,
   sun: Sun,
   moon: Moon,
   gear: Settings,
   info: Info,
   arrowUR: ExternalLink,
+  copy: Copy,
   lock: Lock,
   star: Star,
   pin: MapPin,
@@ -497,6 +527,18 @@ type DesignAppProps = {
   onSupportPlace?: (placeId: string) => Promise<unknown>;
   onJoinGroup?: (code: string) => Promise<unknown>;
   isJoiningGroup?: boolean;
+  onCreateEvent?: (payload: EventCreatePayload) => Promise<unknown>;
+  isCreatingEvent?: boolean;
+  onUpdateEvent?: (payload: EventUpdatePayload) => Promise<unknown>;
+  isUpdatingEvent?: boolean;
+  onUpdateParticipation?: (status: ParticipationStatus) => Promise<unknown>;
+  isUpdatingParticipation?: boolean;
+  onApproveItem?: (id: string) => Promise<unknown>;
+  onRejectItem?: (id: string) => Promise<unknown>;
+  onFinalize?: () => Promise<unknown>;
+  isFinalizing?: boolean;
+  onUpdateParticipationShare?: (payload: { userId: string; paymentShare: string; customShareAmount?: number }) => Promise<unknown>;
+  isUpdatingParticipationShare?: boolean;
 };
 
 export function DesignApp({
@@ -514,6 +556,18 @@ export function DesignApp({
   onSupportPlace = async () => undefined,
   onJoinGroup = async () => undefined,
   isJoiningGroup = false,
+  onCreateEvent = async () => undefined,
+  isCreatingEvent = false,
+  onUpdateEvent = async () => undefined,
+  isUpdatingEvent = false,
+  onUpdateParticipation = async () => undefined,
+  isUpdatingParticipation = false,
+  onApproveItem = async () => undefined,
+  onRejectItem = async () => undefined,
+  onFinalize = async () => undefined,
+  isFinalizing = false,
+  onUpdateParticipationShare = async () => undefined,
+  isUpdatingParticipationShare = false,
 }: DesignAppProps) {
   const appData = initialData;
   const backendRole: Role = appData.me.role === "organizer" ? "organizer" : "participant";
@@ -617,6 +671,18 @@ export function DesignApp({
     supportPlace: onSupportPlace,
     joinGroup: onJoinGroup,
     isJoiningGroup,
+    createEvent: onCreateEvent,
+    isCreatingEvent,
+    updateEvent: onUpdateEvent,
+    isUpdatingEvent,
+    updateParticipation: onUpdateParticipation,
+    isUpdatingParticipation,
+    approveItem: onApproveItem,
+    rejectItem: onRejectItem,
+    finalize: onFinalize,
+    isFinalizing,
+    updateParticipationShare: onUpdateParticipationShare,
+    isUpdatingParticipationShare,
   };
 
   if (isError) {
@@ -678,6 +744,9 @@ function getTitle(current: StackEntry, ctx: Ctx): [string, string?] {
   const { t } = ctx;
   switch (current.name) {
     case "home":
+      if (ctx.role === "organizer" && !ctx.data.event?.id) {
+        return ["Создать событие"];
+      }
       return [t("nav_home"), ctx.data.event.dateLabel];
     case "confirm":
       return [t("confirm_participation")];
@@ -705,6 +774,8 @@ function getTitle(current: StackEntry, ctx: Ctx): [string, string?] {
       return [t("final_calc")];
     case "profile":
       return [t("nav_profile")];
+    case "eventsetup":
+      return [ctx.data.event?.id ? "Настройки события" : "Создать событие"];
     case "states":
       return [t("ui_states")];
     default:
@@ -715,6 +786,9 @@ function getTitle(current: StackEntry, ctx: Ctx): [string, string?] {
 function ScreenSwitch({ current, ctx }: { current: StackEntry; ctx: Ctx }) {
   switch (current.name) {
     case "home":
+      if (ctx.role === "organizer" && !ctx.data.event?.id) {
+        return <EventSetupScreen ctx={ctx} mode="create" />;
+      }
       return <HomeScreen ctx={ctx} />;
     case "confirm":
       return <ConfirmScreen ctx={ctx} />;
@@ -742,6 +816,8 @@ function ScreenSwitch({ current, ctx }: { current: StackEntry; ctx: Ctx }) {
       return <FinalizeScreen ctx={ctx} />;
     case "profile":
       return <ProfileScreen ctx={ctx} />;
+    case "eventsetup":
+      return <EventSetupScreen ctx={ctx} mode={ctx.data.event?.id ? "edit" : "create"} />;
     case "states":
       return <StatesScreen ctx={ctx} />;
     default:
@@ -864,13 +940,30 @@ function HomeScreen({ ctx }: { ctx: Ctx }) {
 }
 
 function ConfirmScreen({ ctx }: { ctx: Ctx }) {
-  const [selected, setSelected] = useState(ctx.participation);
+  const [selected, setSelected] = useState<ParticipationStatus>(normalizeParticipationStatus(ctx.participation));
+  const [error, setError] = useState<string | null>(null);
   const options = [
-    { key: "in", label: ctx.t("part_in"), c: "green", desc: "Получите счет и все обновления" },
-    { key: "maybe", label: ctx.t("part_maybe"), c: "amber", desc: "Напомним ближе к дедлайну" },
-    { key: "out", label: ctx.t("part_out"), c: "red", desc: "Счет не придет" },
-    { key: "none", label: ctx.t("part_none"), c: "gray", desc: "Можно решить позже" },
+    { key: "in" as ParticipationStatus, label: ctx.t("part_in"), c: "green", desc: "Получите счет и все обновления" },
+    { key: "maybe" as ParticipationStatus, label: ctx.t("part_maybe"), c: "amber", desc: "Напомним ближе к дедлайну" },
+    { key: "out" as ParticipationStatus, label: ctx.t("part_out"), c: "red", desc: "Счет не придет" },
+    { key: "none" as ParticipationStatus, label: ctx.t("part_none"), c: "gray", desc: "Можно решить позже" },
   ];
+  const submit = async () => {
+    try {
+      setError(null);
+      await ctx.updateParticipation(selected);
+      ctx.setParticipation(selected);
+      ctx.setParticipants((participants) =>
+        participants.map((participant) =>
+          participant.id === ctx.data.me.id ? { ...participant, participation: selected } : participant,
+        ),
+      );
+      ctx.toast(ctx.t("toast_status"));
+      ctx.nav.pop();
+    } catch (err) {
+      setError(getErrorText(err, "Не удалось сохранить статус участия."));
+    }
+  };
   return (
     <div className="scroll screen-anim">
       <div className="screen-pad gap12">
@@ -882,8 +975,13 @@ function ConfirmScreen({ ctx }: { ctx: Ctx }) {
             <span className="badge-dot" style={{ background: `var(--st-${option.c})` }} />
           </button>
         ))}
+        {error && <Notice tone="warn" icon="warn">{error}</Notice>}
       </div>
-      <BottomAction><Btn full onClick={() => { ctx.setParticipation(selected); ctx.toast(ctx.t("toast_status")); ctx.nav.pop(); }}>{ctx.t("confirm")}</Btn></BottomAction>
+      <BottomAction>
+        <Btn full disabled={ctx.isUpdatingParticipation} onClick={submit}>
+          {ctx.isUpdatingParticipation ? ctx.t("loading") : ctx.t("confirm")}
+        </Btn>
+      </BottomAction>
     </div>
   );
 }
@@ -1433,8 +1531,8 @@ function CreateCollectionScreen({ ctx }: { ctx: Ctx }) {
       });
       ctx.toast("Сбор создан", "check");
       ctx.nav.pop();
-    } catch {
-      setError("Не удалось создать сбор. Проверьте роль организатора и соединение.");
+    } catch (err) {
+      setError(getErrorText(err, "Не удалось создать сбор. Проверьте роль организатора и соединение."));
     }
   };
 
@@ -1471,8 +1569,8 @@ function CollectionScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
     return <StateView icon="cart" title={ctx.t("empty_title")} sub={emptyCollectionsText} />;
   }
   const items = collection.id === ctx.data.collections[0]?.id ? ctx.data.items : [];
-  const approved = items.filter((item) => item.approved);
-  const proposed = items.filter((item) => !item.approved);
+  const approved = items.filter((item) => item.status === "approved");
+  const proposed = items.filter((item) => item.status === "proposed");
   const approvedTotal = approved.reduce((sum, item) => sum + item.qty * item.price, 0);
   const proposedTotal = proposed.reduce((sum, item) => sum + item.qty * item.price, 0);
   const remainingAfterApproved = Math.max(collection.planned - approvedTotal, 0);
@@ -1521,8 +1619,8 @@ function AddItemScreen({ ctx }: { ctx: Ctx }) {
       });
       ctx.toast(ctx.t("toast_saved"));
       ctx.nav.pop();
-    } catch {
-      setError("Не удалось добавить товар. Проверьте активный сбор и соединение.");
+    } catch (err) {
+      setError(getErrorText(err, "Не удалось добавить товар. Проверьте активный сбор и соединение."));
     }
   };
   return (
@@ -1541,20 +1639,104 @@ function AddItemScreen({ ctx }: { ctx: Ctx }) {
 
 function InvoiceScreen({ ctx }: { ctx: Ctx }) {
   const invoice = ctx.data.myInvoice;
-  const paymentPhone = ctx.data.event.payment.phone;
-  const paymentHolder = ctx.data.event.payment.holder;
+  const phone = ctx.data.event.payment.phone;
+  const holder = ctx.data.event.payment.holder;
+  const comment = `Выпускной — ${ctx.data.me.name}`;
   const rows = [
     { label: ctx.t("part_common"), value: invoice.common, c: "blue" as StatusColor },
     ...(invoice.alcohol ? [{ label: ctx.t("part_alcohol"), value: invoice.alcohol, c: "red" as StatusColor }] : []),
     ...(invoice.individual ? [{ label: ctx.t("part_individual"), value: invoice.individual, c: "amber" as StatusColor }] : []),
   ];
+  const copyText = (text: string, msg: string) => {
+    if (!text) return;
+    try { navigator.clipboard?.writeText(text); } catch { /* ignore */ }
+    ctx.toast(msg, "copy");
+  };
   return (
-    <div className="scroll screen-anim"><div className="screen-pad stack">
-      <Card className="invoice-total"><small>{ctx.t("invoice_total")}</small><b>{money(invoice.total)}</b><Badge color={invoice.paid ? "green" : "amber"}>{invoice.paid ? ctx.t("paid") : ctx.t("not_paid")}</Badge></Card>
-      <SectionLabel>{ctx.t("invoice_breakdown")}</SectionLabel><div className="listcard">{rows.map((row) => <div key={row.label} className="lrow lrow-static"><span className="badge-dot" style={{ background: `var(--st-${row.c})` }} /><div className="lrow-main"><span className="lrow-title">{row.label}</span></div><div className="lrow-amt">{money(row.value)}</div></div>)}{invoice.individualItems.map((item) => <div key={item.name} className="lrow lrow-static subrow"><div className="lrow-main"><span className="lrow-sub">{item.name}</span></div><div className="lrow-sub">{money(item.price)}</div></div>)}</div>
-      <Card><div className="row-between"><span className="row muted"><Icon name="clock" />{ctx.t("pay_deadline")}</span><b>{ctx.fmtDate(invoice.deadline)}</b></div></Card>
-      <SectionLabel>{ctx.t("pay_instruction")}</SectionLabel><Card>{paymentPhone ? <p>Переведите сумму на Kaspi организатора <b>{paymentPhone}</b>{paymentHolder ? <> ({paymentHolder})</> : null} с комментарием <b>«Выпускной - {ctx.data.me.name}»</b>.</p> : <Notice tone="warn" icon="warn">Организатор еще не указал номер Kaspi.</Notice>}<Notice tone="info" icon="info">{ctx.t("confirmed_by_org")}</Notice></Card>
-    </div><BottomAction><Btn full variant="secondary" icon="arrowUR" disabled={!paymentPhone} onClick={() => ctx.toast("Открываю Kaspi", "wallet")}>Оплатить в Kaspi</Btn></BottomAction></div>
+    <div className="scroll screen-anim">
+      <div className="screen-pad stack">
+        <Card style={{ textAlign: "center", padding: "22px 16px" }}>
+          <div style={{ fontSize: 13, color: "var(--hint)" }}>{ctx.t("invoice_total")}</div>
+          <div className="num" style={{ fontSize: 38, fontWeight: 800, letterSpacing: "-0.03em", margin: "4px 0 8px" }}>{money(invoice.total)}</div>
+          <Badge color={invoice.paid ? "green" : "amber"}>{invoice.paid ? ctx.t("paid") : ctx.t("not_paid")}</Badge>
+        </Card>
+
+        <SectionLabel>{ctx.t("invoice_breakdown")}</SectionLabel>
+        <div className="listcard">
+          {rows.map((row) => (
+            <div key={row.label} className="lrow lrow-static">
+              <span className="badge-dot" style={{ background: `var(--st-${row.c})`, width: 9, height: 9 }} />
+              <div className="lrow-main"><span className="lrow-title">{row.label}</span></div>
+              <div className="lrow-amt num">{money(row.value)}</div>
+            </div>
+          ))}
+          {invoice.individualItems.map((item) => (
+            <div key={item.name} className="lrow lrow-static" style={{ paddingLeft: 32 }}>
+              <div className="lrow-main"><span className="lrow-sub" style={{ marginTop: 0 }}>{item.name}</span></div>
+              <div className="lrow-sub num">{money(item.price)}</div>
+            </div>
+          ))}
+          <div className="lrow lrow-static" style={{ background: "var(--surface-2)" }}>
+            <div className="lrow-main"><span className="lrow-title" style={{ fontWeight: 700 }}>{ctx.t("invoice_total")}</span></div>
+            <div className="lrow-amt num" style={{ fontWeight: 800 }}>{money(invoice.total)}</div>
+          </div>
+        </div>
+
+        <Card>
+          <div className="row-between">
+            <span className="row" style={{ gap: 9, color: "var(--hint)" }}><Icon name="clock" size={18} />{ctx.t("pay_deadline")}</span>
+            <span style={{ fontWeight: 650 }}>{ctx.fmtDate(invoice.deadline)}</span>
+          </div>
+        </Card>
+
+        <SectionLabel>{ctx.t("pay_instruction")}</SectionLabel>
+        <Card>
+          {phone ? (
+            <div className="stack" style={{ gap: 13 }}>
+              <div style={{ background: "var(--surface-2)", borderRadius: 12, padding: "12px 13px" }}>
+                <div className="row" style={{ gap: 7, color: "var(--hint)", fontSize: 12.5, fontWeight: 600 }}>
+                  <Icon name="wallet" size={15} stroke={2} />Kaspi номер
+                </div>
+                <div className="row-between" style={{ marginTop: 7, gap: 10 }}>
+                  <span className="num" style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.01em" }}>{phone}</span>
+                  <button className="copychip" onClick={() => copyText(phone, "Скопировано 👌")}>
+                    <Icon name="copy" size={14} stroke={2} />Скопировать
+                  </button>
+                </div>
+                {holder && <div style={{ fontSize: 12.5, color: "var(--hint)", marginTop: 5 }}>{holder} · владелец</div>}
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12.5, color: "var(--hint)", fontWeight: 600, marginBottom: 6 }}>Комментарий к переводу</div>
+                <div className="row-between" style={{ background: "var(--surface-2)", borderRadius: 12, padding: "10px 11px 10px 13px", gap: 10 }}>
+                  <span style={{ fontWeight: 600 }}>{comment}</span>
+                  <button className="copychip copychip-icon" onClick={() => copyText(comment, "Скопировано 👌")} aria-label="Скопировать">
+                    <Icon name="copy" size={16} stroke={2} />
+                  </button>
+                </div>
+              </div>
+
+              <Notice tone="info" icon="info">{ctx.t("confirmed_by_org")}</Notice>
+            </div>
+          ) : (
+            <Notice tone="warn" icon="warn">Организатор не указал номер Kaspi.</Notice>
+          )}
+        </Card>
+      </div>
+      <BottomAction>
+        <div className="row" style={{ gap: 10 }}>
+          <Btn variant="secondary" icon="copy" disabled={!phone} style={{ flex: 1 }} onClick={() => copyText(phone, "Номер скопирован")}>Скопировать номер</Btn>
+          <button
+            className={`btn btn-primary btn-md${!phone ? " btn-disabled" : ""}`}
+            style={{ flex: 1, background: phone ? "#E31E24" : undefined, borderColor: phone ? "#E31E24" : undefined }}
+            onClick={!phone ? undefined : () => { window.open("https://kaspi.kz", "_blank"); }}
+          >
+            <KaspiIcon size={19} />
+            <span>Открыть Kaspi</span>
+          </button>
+        </div>
+      </BottomAction>
+    </div>
   );
 }
 
@@ -1605,11 +1787,105 @@ function ParticipantScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
   const participant = ctx.participants.find((item) => item.id === id);
   if (!participant) return null;
   const update = (patch: Partial<Participant>) => ctx.setParticipants((list) => list.map((item) => (item.id === participant.id ? { ...item, ...patch } : item)));
-  return <div className="scroll screen-anim"><div className="screen-pad stack"><Card className="profile-card"><Avatar name={participant.name} size={64} /><h2>{participant.name}</h2><Badge color={participationColor[participant.participation]}>{ctx.t(partLabel[participant.participation])}</Badge></Card><SectionLabel>{ctx.t("payment_category")}</SectionLabel><div className="gap8">{Object.entries(payCats).map(([key, value]) => <button key={key} className={`select-card compact${participant.payCat === key ? " selected" : ""}`} onClick={() => { update({ payCat: key as Participant["payCat"] }); ctx.toast(ctx.t("toast_saved")); }}><span className="badge-dot" style={{ background: `var(--st-${value.c})` }} /><span className="spread">{ctx.t(value.k)}</span>{participant.payCat === key && <Icon name="check" />}</button>)}</div>{participant.participation === "in" && <><SectionLabel>{ctx.t("invoice_sum")}</SectionLabel><Card><div className="row-between section-space"><span className="muted">{ctx.t("invoice_total")}</span><b className="big-num">{money(participant.invoice)}</b></div><div className="row-between"><Badge color={participant.paid ? "green" : "amber"}>{participant.paid ? ctx.t("paid") : ctx.t("not_paid")}</Badge><Btn size="sm" variant={participant.paid ? "secondary" : "tinted"} icon={participant.paid ? "x" : "check"} onClick={() => { update({ paid: !participant.paid }); ctx.toast(participant.paid ? ctx.t("not_paid") : ctx.t("toast_paid")); }}>{participant.paid ? "Отменить" : ctx.t("mark_paid")}</Btn></div></Card><Notice tone="info" icon="info">{ctx.t("confirmed_by_org")}</Notice></>}</div></div>;
+
+  const [customAmount, setCustomAmount] = useState(String(participant.customShareAmount ?? 0));
+
+  useEffect(() => {
+    setCustomAmount(String(participant.customShareAmount ?? 0));
+  }, [participant.id]);
+
+  const handlePayCat = async (key: string) => {
+    const prevPayCat = participant.payCat;
+    update({ payCat: key as Participant["payCat"] });
+    try {
+      await ctx.updateParticipationShare({
+        userId: participant.id,
+        paymentShare: key,
+        customShareAmount: key === "individual" ? (parseInt(customAmount, 10) || 0) : undefined,
+      });
+      ctx.toast(ctx.t("toast_saved"));
+    } catch (err) {
+      update({ payCat: prevPayCat as Participant["payCat"] });
+      ctx.toast(getErrorText(err, "Не удалось сохранить категорию."), "warn");
+    }
+  };
+
+  const handleCustomAmount = async () => {
+    const amount = parseInt(customAmount, 10) || 0;
+    update({ customShareAmount: amount });
+    try {
+      await ctx.updateParticipationShare({
+        userId: participant.id,
+        paymentShare: "individual",
+        customShareAmount: amount,
+      });
+      ctx.toast(ctx.t("toast_saved"));
+    } catch (err) {
+      ctx.toast(getErrorText(err, "Не удалось сохранить сумму."), "warn");
+    }
+  };
+
+  return (
+    <div className="scroll screen-anim">
+      <div className="screen-pad stack">
+        <Card className="profile-card">
+          <Avatar name={participant.name} size={64} />
+          <h2>{participant.name}</h2>
+          <Badge color={participationColor[participant.participation]}>{ctx.t(partLabel[participant.participation])}</Badge>
+        </Card>
+        <SectionLabel>{ctx.t("payment_category")}</SectionLabel>
+        <div className="gap8">
+          {Object.entries(payCats).map(([key, value]) => (
+            <button
+              key={key}
+              className={`select-card compact${participant.payCat === key ? " selected" : ""}`}
+              onClick={() => handlePayCat(key)}
+              disabled={ctx.isUpdatingParticipationShare}
+            >
+              <span className="badge-dot" style={{ background: `var(--st-${value.c})` }} />
+              <span className="spread">{ctx.t(value.k)}</span>
+              {participant.payCat === key && <Icon name="check" />}
+            </button>
+          ))}
+        </div>
+        {participant.payCat === "individual" && (
+          <Field label="Индивидуальная сумма (тг)">
+            <div className="row gap8">
+              <Input
+                value={customAmount}
+                onChange={setCustomAmount}
+                placeholder="5000"
+              />
+              <Btn size="sm" icon="check" onClick={handleCustomAmount} disabled={ctx.isUpdatingParticipationShare}>
+                ОК
+              </Btn>
+            </div>
+          </Field>
+        )}
+        {participant.participation === "in" && (
+          <>
+            <SectionLabel>{ctx.t("invoice_sum")}</SectionLabel>
+            <Card>
+              <div className="row-between section-space">
+                <span className="muted">{ctx.t("invoice_total")}</span>
+                <b className="big-num">{money(participant.invoice)}</b>
+              </div>
+              <div className="row-between">
+                <Badge color={participant.paid ? "green" : "amber"}>{participant.paid ? ctx.t("paid") : ctx.t("not_paid")}</Badge>
+                <Btn size="sm" variant={participant.paid ? "secondary" : "tinted"} icon={participant.paid ? "x" : "check"} onClick={() => { update({ paid: !participant.paid }); ctx.toast(participant.paid ? ctx.t("not_paid") : ctx.t("toast_paid")); }}>{participant.paid ? "Отменить" : ctx.t("mark_paid")}</Btn>
+              </div>
+            </Card>
+            <Notice tone="info" icon="info">{ctx.t("confirmed_by_org")}</Notice>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function FinalizeScreen({ ctx }: { ctx: Ctx }) {
   const [confirm, setConfirm] = useState(false);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const collection = ctx.data.collections[0];
   const willReceive = ctx.participants.filter((p) => p.participation === "in");
   const wontReceive = ctx.participants.filter((p) => p.participation === "out" || p.participation === "exempt");
@@ -1628,7 +1904,19 @@ function FinalizeScreen({ ctx }: { ctx: Ctx }) {
     return <div className="scroll screen-anim"><div className="screen-pad stack"><StateView icon="wallet" title="Сумма счета равна 0" sub="Добавьте и утвердите товары, чтобы появился расчет." /></div></div>;
   }
 
-  return <div className="scroll screen-anim"><div className="screen-pad stack"><Notice tone="info" icon="info">Проверьте список получателей и сумму. После подтверждения счета получат только участники со статусом «Участвует».</Notice><Card className="invoice-total"><small>{ctx.t("total_sum")}</small><b>{money(total)}</b><span className="muted">{willReceive.length} {ctx.t("people")}</span></Card><SectionLabel>{ctx.t("final_calc")}</SectionLabel><div className="listcard"><CalcRow icon="check" c="green" label={ctx.t("will_receive")} value={`${willReceive.length} ${ctx.t("people")}`} /><CalcRow icon="x" c="red" label={ctx.t("wont_receive")} value={`${wontReceive.length} ${ctx.t("people")}`} /><CalcRow icon="clock" c="amber" label={ctx.t("no_answer")} value={`${noAnswer.length} ${ctx.t("people")}`} /></div><SectionLabel>{ctx.t("budget")}</SectionLabel><div className="listcard"><CalcLine label={ctx.t("plan")} value={money(planned)} /><CalcLine label={ctx.t("total_sum")} value={money(total)} green /><CalcLine label={ctx.t("remaining")} value={money(remaining)} strong /></div>{noAnswer.length > 0 && <Notice tone="warn" icon="warn">{noAnswer.length} {ctx.t("people")} еще не ответили - они не получат счет</Notice>}</div><BottomAction><Btn full icon="send" onClick={() => setConfirm(true)}>{ctx.t("send_invoices")}</Btn></BottomAction><Modal open={confirm} onClose={() => setConfirm(false)} title={ctx.t("confirm_send")} danger><div className="confirm-list"><CalcLine label={ctx.t("will_receive")} value={`${willReceive.length} ${ctx.t("people")}`} green /><CalcLine label={ctx.t("wont_receive")} value={`${wontReceive.length} ${ctx.t("people")}`} /><CalcLine label={ctx.t("no_answer")} value={`${noAnswer.length} ${ctx.t("people")}`} /><CalcLine label={ctx.t("total_sum")} value={money(total)} strong /></div><Btn full icon="send" onClick={() => { setConfirm(false); ctx.toast(ctx.t("toast_sent"), "send"); ctx.nav.pop(); }}>{ctx.t("confirm_send")}</Btn><button className="btn btn-ghost btn-md btn-full" onClick={() => setConfirm(false)}>{ctx.t("cancel")}</button></Modal></div>;
+  const handleFinalize = async () => {
+    setFinalizeError(null);
+    try {
+      await ctx.finalize();
+      setConfirm(false);
+      ctx.toast(ctx.t("toast_sent"), "send");
+      ctx.nav.pop();
+    } catch (err) {
+      setFinalizeError(getErrorText(err, "Не удалось отправить счета. Попробуйте ещё раз."));
+    }
+  };
+
+  return <div className="scroll screen-anim"><div className="screen-pad stack"><Notice tone="info" icon="info">Проверьте список получателей и сумму. После подтверждения счета получат только участники со статусом «Участвует».</Notice><Card className="invoice-total"><small>{ctx.t("total_sum")}</small><b>{money(total)}</b><span className="muted">{willReceive.length} {ctx.t("people")}</span></Card><SectionLabel>{ctx.t("final_calc")}</SectionLabel><div className="listcard"><CalcRow icon="check" c="green" label={ctx.t("will_receive")} value={`${willReceive.length} ${ctx.t("people")}`} /><CalcRow icon="x" c="red" label={ctx.t("wont_receive")} value={`${wontReceive.length} ${ctx.t("people")}`} /><CalcRow icon="clock" c="amber" label={ctx.t("no_answer")} value={`${noAnswer.length} ${ctx.t("people")}`} /></div><SectionLabel>{ctx.t("budget")}</SectionLabel><div className="listcard"><CalcLine label={ctx.t("plan")} value={money(planned)} /><CalcLine label={ctx.t("total_sum")} value={money(total)} green /><CalcLine label={ctx.t("remaining")} value={money(remaining)} strong /></div>{noAnswer.length > 0 && <Notice tone="warn" icon="warn">{noAnswer.length} {ctx.t("people")} еще не ответили - они не получат счет</Notice>}</div><BottomAction><Btn full icon="send" onClick={() => setConfirm(true)}>{ctx.t("send_invoices")}</Btn></BottomAction><Modal open={confirm} onClose={() => setConfirm(false)} title={ctx.t("confirm_send")} danger><div className="confirm-list"><CalcLine label={ctx.t("will_receive")} value={`${willReceive.length} ${ctx.t("people")}`} green /><CalcLine label={ctx.t("wont_receive")} value={`${wontReceive.length} ${ctx.t("people")}`} /><CalcLine label={ctx.t("no_answer")} value={`${noAnswer.length} ${ctx.t("people")}`} /><CalcLine label={ctx.t("total_sum")} value={money(total)} strong /></div>{finalizeError && <Notice tone="warn" icon="warn">{finalizeError}</Notice>}<Btn full icon="send" disabled={ctx.isFinalizing} onClick={handleFinalize}>{ctx.isFinalizing ? ctx.t("loading") : ctx.t("confirm_send")}</Btn><button className="btn btn-ghost btn-md btn-full" onClick={() => setConfirm(false)}>{ctx.t("cancel")}</button></Modal></div>;
 }
 
 function ProfileScreen({ ctx }: { ctx: Ctx }) {
@@ -1638,6 +1926,18 @@ function ProfileScreen({ ctx }: { ctx: Ctx }) {
         <Card><div className="row"><Avatar name={ctx.data.me.name} size={56} /><div><h2>{ctx.data.me.name}</h2><p className="muted">{ctx.data.event.title} · {ctx.data.event.school}</p></div></div></Card>
         <SectionLabel>{ctx.t("role")}</SectionLabel>
         <div className="listcard"><div className="lrow"><Icon name={ctx.role === "organizer" ? "lock" : "user"} /><span className="lrow-main">{ctx.t(ctx.role === "organizer" ? "role_organizer" : "role_participant")}</span><Badge color={ctx.role === "organizer" ? "green" : "blue"}>{ctx.t(ctx.role === "organizer" ? "role_organizer" : "role_participant")}</Badge></div></div>
+        {ctx.role === "organizer" && (
+          <>
+            <SectionLabel>Событие</SectionLabel>
+            <div className="listcard">
+              <button className="lrow" onClick={() => ctx.nav.push("eventsetup")}>
+                <Icon name="calendar" />
+                <span className="lrow-main">Настройки события</span>
+                <Icon name="chevronR" />
+              </button>
+            </div>
+          </>
+        )}
         <SectionLabel>{ctx.t("theme")}</SectionLabel>
         <Segmented value={ctx.themePref} options={[["system", ctx.t("th_system")], ["light", ctx.t("th_light")], ["dark", ctx.t("th_dark")]]} onChange={(value) => ctx.setThemePref(value as ThemePreference)} />
         <SectionLabel>{ctx.t("language")}</SectionLabel>
@@ -1649,6 +1949,102 @@ function ProfileScreen({ ctx }: { ctx: Ctx }) {
         </div>
         <p className="hint center-text">Версия {__APP_VERSION__}</p>
       </div>
+    </div>
+  );
+}
+
+function EventSetupScreen({ ctx, mode }: { ctx: Ctx; mode: "create" | "edit" }) {
+  const event = ctx.data.event;
+  const optionalText = (value: string) => value.trim() || undefined;
+  const [title, setTitle] = useState(mode === "edit" ? event.title : "");
+  const [eventDate, setEventDate] = useState(mode === "edit" ? event.date : "");
+  const [description, setDescription] = useState(mode === "edit" ? event.description : "");
+  const [paymentPhone, setPaymentPhone] = useState(mode === "edit" ? event.payment.phone : "");
+  const [paymentHolder, setPaymentHolder] = useState(mode === "edit" ? event.payment.holder : "");
+  const [error, setError] = useState<string | null>(null);
+
+  const isBusy = ctx.isCreatingEvent || ctx.isUpdatingEvent;
+
+  const submit = async () => {
+    if (!title.trim()) {
+      setError("Укажите название события.");
+      return;
+    }
+
+    setError(null);
+    try {
+      if (mode === "create") {
+        await ctx.createEvent({
+          title: title.trim(),
+          eventDate: eventDate || undefined,
+          description: optionalText(description),
+          paymentPhone: optionalText(paymentPhone),
+          paymentHolder: optionalText(paymentHolder),
+        });
+        ctx.toast("Событие создано", "check");
+      } else {
+        await ctx.updateEvent({
+          title: title.trim(),
+          eventDate,
+          description: description.trim(),
+          paymentPhone: paymentPhone.trim(),
+          paymentHolder: paymentHolder.trim(),
+        });
+        ctx.toast("Сохранено", "check");
+        ctx.nav.pop();
+      }
+    } catch (err) {
+      setError(getErrorText(err, mode === "create" ? "Не удалось создать событие." : "Не удалось сохранить."));
+    }
+  };
+
+  return (
+    <div className="scroll screen-anim">
+      <div className="screen-pad stack">
+        {mode === "create" && (
+          <Notice tone="info" icon="info">
+            Создайте событие, чтобы открыть доступ к сборам, местам и участникам.
+          </Notice>
+        )}
+        <Field label="Название" error={error && !title.trim() ? error : null}>
+          <Input
+            value={title}
+            onChange={(value) => {
+              setTitle(value);
+              setError(null);
+            }}
+            placeholder="Например, Выпускной 11А"
+          />
+        </Field>
+        <Field label="Дата выпускного" optional={ctx.t("optional")}>
+          <input
+            type="date"
+            className="input"
+            value={eventDate}
+            onChange={(e) => setEventDate(e.target.value)}
+          />
+        </Field>
+        <Field label="Описание" optional={ctx.t("optional")}>
+          <textarea
+            className="input textarea"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Краткое описание события"
+          />
+        </Field>
+        <Field label="Номер Kaspi" optional={ctx.t("optional")}>
+          <Input value={paymentPhone} onChange={setPaymentPhone} placeholder="+7 777 000 00 00" />
+        </Field>
+        <Field label="Владелец Kaspi" optional={ctx.t("optional")}>
+          <Input value={paymentHolder} onChange={setPaymentHolder} placeholder="Имя Ф." />
+        </Field>
+        {error && title.trim() && <Notice tone="warn" icon="warn">{error}</Notice>}
+      </div>
+      <BottomAction>
+        <Btn full icon="check" disabled={isBusy} onClick={submit}>
+          {isBusy ? ctx.t("loading") : mode === "create" ? "Создать событие" : "Сохранить"}
+        </Btn>
+      </BottomAction>
     </div>
   );
 }
@@ -1671,12 +2067,21 @@ function StatesScreen({ ctx }: { ctx: Ctx }) {
   return <div className="scroll screen-anim"><div className="screen-pad gap12"><Segmented value={view} options={[["loading", "Loading"], ["empty", "Empty"], ["error", "Error"], ["map", ctx.t("map_state")]]} onChange={setView} />{view === "loading" && [0, 1, 2].map((i) => <Card key={i}><Skeleton h={16} w="55%" /><Skeleton h={12} /><Skeleton h={22} w="70%" /></Card>)}{view === "empty" && <StateView icon="cart" title={ctx.t("empty_title")} sub={ctx.t("empty_collections")} action={<Btn full icon="plus">{ctx.t("create_collection")}</Btn>} />}{view === "error" && <StateView icon="warn" title={ctx.t("error_title")} sub={ctx.t("error_sub")} action={<Btn full variant="secondary">{ctx.t("retry")}</Btn>} />}{view === "map" && <div className="map-state"><MapLoading t={ctx.t} /></div>}</div></div>;
 }
 
-function Btn({ children, variant = "primary", icon, onClick, full, size = "md", disabled }: { children?: ReactNode; variant?: "primary" | "secondary" | "tinted" | "ghost"; icon?: string; onClick?: () => void; full?: boolean; size?: "sm" | "md"; disabled?: boolean }) {
-  return <button className={`btn btn-${variant} btn-${size}${full ? " btn-full" : ""}${disabled ? " btn-disabled" : ""}`} onClick={disabled ? undefined : onClick}>{icon && <Icon name={icon} size={size === "sm" ? 17 : 19} stroke={2} />}{children && <span>{children}</span>}</button>;
+function Btn({ children, variant = "primary", icon, onClick, full, size = "md", disabled, style }: { children?: ReactNode; variant?: "primary" | "secondary" | "tinted" | "ghost"; icon?: string; onClick?: () => void; full?: boolean; size?: "sm" | "md"; disabled?: boolean; style?: React.CSSProperties }) {
+  return <button className={`btn btn-${variant} btn-${size}${full ? " btn-full" : ""}${disabled ? " btn-disabled" : ""}`} style={style} onClick={disabled ? undefined : onClick}>{icon && <Icon name={icon} size={size === "sm" ? 17 : 19} stroke={2} />}{children && <span>{children}</span>}</button>;
 }
 
 function Badge({ color = "gray", children }: { color?: StatusColor; children: ReactNode }) {
   return <span className="badge badge-soft" style={{ "--c": `var(--st-${color})`, "--cbg": `var(--st-${color}-bg)` } as React.CSSProperties}><span className="badge-dot" />{children}</span>;
+}
+
+function KaspiIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 305 290" xmlns="http://www.w3.org/2000/svg" fill="currentColor" overflow="hidden" aria-hidden="true">
+      <path d="m64 269.4c15.5-64.3-2.9-66.5-2.9-97.7 0-10.4 8.2-35.3 9.4-47.4 2.8-27.8-4.1-20.4 16.2-41l1.2-28.6c10.2-9.8 15.3-18.6 27.8-15.5 7.6 22.6-6.8 15.5-8.2 41.9 8.5 11.3 14.2 12.4 20.6 26.6 8.1 18 2.3 17.8 17.6 32.9 22.5 2.6 36.1 2.7 52.2-13.5 1.7-17.3-8.3-15.8 1.9-31.7 7-10.9 13.9-16.8 27-12.4 4.3 17-15 20.5-9 39.4 25.9 2.6 31.9-33.1 51.7-34.9 0 38.1-39.8 43.1-40.7 74.1-.6 19.4 16.6 72.8 34 84.2 15.3-23.5 31.8-49.1 33.7-77.5 13.3-193.8-243.1-229.1-291.8-59.4-2.5 8.7-4 17.5-4.7 26.3v22.5c4.3 55.8 38.7 104.8 64 111.7z" />
+      <path d="m139 295.4c69.3 8.2 62-13.2 48.3-92.1-5.4-31.1-11.7-47.5-48.6-44.6-23 27.3-11.4 80.5-10.6 103.8.6 18.4-2.5 19.6 10.9 32.9zm79.7-19c11.6-1.4 13.6-3.8 23-11.3 1.5-15.9-9.4-41.5-26.4-46.6-8 15.4-5.7 42.8 3.4 57.9zm-114.2 13.2c0-19.4 2.4-59.5-7.6-73.3-13.3 3.9-9.2 15.3-9.3 39.6-.1 17.8-3.4 31.9 16.9 33.7z" />
+    </svg>
+  );
 }
 
 function BudgetProgress({ collected, planned, approved, t }: { collected: number; planned: number; approved: number; t: (key: string) => string }) {
@@ -1700,9 +2105,9 @@ function BottomNav({ tab, onTab, t, isOrg }: { tab: Tab; onTab: (tab: Tab) => vo
   return <div className="bottomnav">{items.map((item) => <button key={item.key} className={`navitem${tab === item.key ? " navitem-active" : ""}`} onClick={() => onTab(item.key)}><Icon name={item.icon} size={24} stroke={tab === item.key ? 2.1 : 1.8} /><span>{item.label}</span>{item.key === "participants" && isOrg && <span className="nav-org-dot" />}</button>)}</div>;
 }
 
-function Card({ children, onClick, className = "" }: { children: ReactNode; onClick?: () => void; className?: string }) {
+function Card({ children, onClick, className = "", style }: { children: ReactNode; onClick?: () => void; className?: string; style?: React.CSSProperties }) {
   const Comp = onClick ? "button" : "div";
-  return <Comp className={`card card-pad${onClick ? " card-tap" : ""}${className ? ` ${className}` : ""}`} onClick={onClick}>{children}</Comp>;
+  return <Comp className={`card card-pad${onClick ? " card-tap" : ""}${className ? ` ${className}` : ""}`} style={style} onClick={onClick}>{children}</Comp>;
 }
 
 function SectionLabel({ children, action }: { children: ReactNode; action?: ReactNode }) {
@@ -1744,7 +2149,51 @@ function CollectionCard({ collection, ctx }: { collection: Collection; ctx: Ctx 
 
 function ItemRow({ item, ctx, proposed }: { item: PriceItem; ctx: Ctx; proposed?: boolean }) {
   const type = itemType[item.type];
-  return <div className="lrow lrow-static"><div className="lrow-main"><div className="row">{item.type !== "common" && <Badge color={type.c}>{ctx.t(type.k)}</Badge>}<span className="lrow-title">{item.name}</span></div><div className="lrow-sub">{item.qty} {item.unit} × {money(item.price)}{item.support ? ` · +${item.support} ${ctx.t("support").toLowerCase()}` : ""}{proposed ? ` · ${item.by}` : ""}</div></div><div className="lrow-amt">{money(item.qty * item.price)}</div></div>;
+  const [busy, setBusy] = useState(false);
+  const canModerate = proposed && ctx.role === "organizer";
+
+  const handleApprove = async () => {
+    setBusy(true);
+    try {
+      await ctx.approveItem(item.id);
+      ctx.toast("Утверждено", "check");
+    } catch {
+      ctx.toast("Не удалось утвердить", "warn");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReject = async () => {
+    setBusy(true);
+    try {
+      await ctx.rejectItem(item.id);
+      ctx.toast("Отклонено", "x");
+    } catch {
+      ctx.toast("Не удалось отклонить", "warn");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="lrow lrow-static"
+      style={canModerate ? { flexWrap: "wrap", alignItems: "flex-start", paddingBottom: 10 } : {}}
+    >
+      <div className="lrow-main">
+        <div className="row">{item.type !== "common" && <Badge color={type.c}>{ctx.t(type.k)}</Badge>}<span className="lrow-title">{item.name}</span></div>
+        <div className="lrow-sub">{item.qty} {item.unit} × {money(item.price)}{item.support ? ` · +${item.support} ${ctx.t("support").toLowerCase()}` : ""}{proposed ? ` · ${item.by}` : ""}</div>
+      </div>
+      <div className="lrow-amt">{money(item.qty * item.price)}</div>
+      {canModerate && (
+        <div style={{ flexBasis: "100%", display: "flex", gap: 8, paddingTop: 8 }}>
+          <Btn size="sm" variant="tinted" icon="check" full disabled={busy} onClick={handleApprove}>Утвердить</Btn>
+          <Btn size="sm" variant="ghost" icon="x" full disabled={busy} onClick={handleReject}>Отклонить</Btn>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ParticipantList({ participants, ctx, publicOnly }: { participants: Participant[]; ctx: Ctx; publicOnly?: boolean }) {

@@ -1,7 +1,17 @@
 import { DesignApp } from "./design/DesignApp";
 import { emptyAppData, fetchBootstrapData } from "./api/bootstrap";
 import { joinGroupByCode } from "./api/accounts";
-import { createFundraising, CreateFundraisingPayload, createPriceItem, CreatePriceItemPayload } from "./api/fundraising";
+import {
+  createEvent,
+  CreateEventPayload,
+  ParticipationStatus,
+  updateEvent,
+  UpdateEventPayload,
+  updateParticipationShare,
+  UpdateParticipationSharePayload,
+  updateParticipationStatus,
+} from "./api/events";
+import { approvePriceItem, createFundraising, CreateFundraisingPayload, createPriceItem, CreatePriceItemPayload, finalizeFundraising, rejectPriceItem } from "./api/fundraising";
 import { createPlace, CreatePlacePayload, supportPlace } from "./api/places";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -32,6 +42,34 @@ export function App() {
     mutationFn: (code: string) => joinGroupByCode(code),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
   });
+  const createEventMutation = useMutation({
+    mutationFn: (payload: CreateEventPayload) => createEvent(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
+  });
+  const updateEventMutation = useMutation({
+    mutationFn: (payload: UpdateEventPayload) => updateEvent(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
+  });
+  const updateParticipationMutation = useMutation({
+    mutationFn: (status: ParticipationStatus) => updateParticipationStatus(status),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
+  });
+  const approvePriceItemMutation = useMutation({
+    mutationFn: (id: string) => approvePriceItem(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
+  });
+  const rejectPriceItemMutation = useMutation({
+    mutationFn: (id: string) => rejectPriceItem(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
+  });
+  const finalizeMutation = useMutation({
+    mutationFn: finalizeFundraising,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
+  });
+  const updateParticipationShareMutation = useMutation({
+    mutationFn: (payload: UpdateParticipationSharePayload) => updateParticipationShare(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
+  });
 
   return (
     <DesignApp
@@ -49,6 +87,18 @@ export function App() {
       onSupportPlace={(placeId) => supportPlaceMutation.mutateAsync(placeId)}
       onJoinGroup={(code) => joinGroupMutation.mutateAsync(code)}
       isJoiningGroup={joinGroupMutation.isPending}
+      onCreateEvent={(payload) => createEventMutation.mutateAsync(payload)}
+      isCreatingEvent={createEventMutation.isPending}
+      onUpdateEvent={(payload) => updateEventMutation.mutateAsync(payload)}
+      isUpdatingEvent={updateEventMutation.isPending}
+      onUpdateParticipation={(status) => updateParticipationMutation.mutateAsync(status)}
+      isUpdatingParticipation={updateParticipationMutation.isPending}
+      onApproveItem={(id) => approvePriceItemMutation.mutateAsync(id)}
+      onRejectItem={(id) => rejectPriceItemMutation.mutateAsync(id)}
+      onFinalize={() => finalizeMutation.mutateAsync()}
+      isFinalizing={finalizeMutation.isPending}
+      onUpdateParticipationShare={(payload) => updateParticipationShareMutation.mutateAsync(payload)}
+      isUpdatingParticipationShare={updateParticipationShareMutation.isPending}
     />
   );
 }

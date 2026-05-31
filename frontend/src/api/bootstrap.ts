@@ -22,6 +22,7 @@ export const emptyAppData: AppData = {
   event: {
     id: "",
     title: "Выпускной",
+    description: "",
     school: "Событие не создано",
     date: "",
     dateLabel: "Настройте событие в админке",
@@ -34,7 +35,7 @@ export const emptyAppData: AppData = {
     id: "me",
     name: "Участник",
     role: "participant",
-    participation: "none",
+    participation: "in",
   },
   places: [],
   collections: [],

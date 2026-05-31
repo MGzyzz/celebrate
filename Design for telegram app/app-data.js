@@ -136,6 +136,12 @@ window.DATA = {
     { id: 'u12', name: 'Зарина Тлеу', participation: 'exempt', payCat: 'exempt', paid: false, invoice: 0 },
   ],
 
+  // organizer payment requisites (Kaspi)
+  payment: {
+    phone: '+7 707 123 45 67',
+    owner: 'Дана Қ.',
+  },
+
   // current user invoice breakdown
   myInvoice: {
     total: 24500,
