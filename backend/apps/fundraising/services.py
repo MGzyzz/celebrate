@@ -25,21 +25,38 @@ def finalize_fundraising(fundraising: Fundraising) -> list[Invoice]:
     alcohol_total = sum(item.total_price for item in alcohol_items)
 
     regular_participants = [p for p in participants if p.payment_share != Participation.PaymentShare.EXEMPT]
-    alcohol_participants = [
-        p
+    alcohol_participant_pks = {
+        p.pk
         for p in regular_participants
         if p.payment_share not in {Participation.PaymentShare.NO_ALCOHOL, Participation.PaymentShare.EXEMPT}
-    ]
+    }
 
     common_share = common_total // len(regular_participants) if regular_participants else 0
-    alcohol_share = alcohol_total // len(alcohol_participants) if alcohol_participants else 0
+    common_remainder = (common_total % len(regular_participants)) if regular_participants else 0
+    alcohol_share = alcohol_total // len(alcohol_participant_pks) if alcohol_participant_pks else 0
+    alcohol_remainder = (alcohol_total % len(alcohol_participant_pks)) if alcohol_participant_pks else 0
 
     invoices = []
+    first_regular_done = False
+    first_alcohol_done = False
+
     for participation in regular_participants:
-        common_amount = common_share
-        alcohol_amount = alcohol_share if participation in alcohol_participants else 0
+        is_alcohol = participation.pk in alcohol_participant_pks
+
+        c_extra = common_remainder if not first_regular_done else 0
+        a_extra = alcohol_remainder if (is_alcohol and not first_alcohol_done) else 0
+
+        common_amount = common_share + c_extra
+        alcohol_amount = (alcohol_share + a_extra) if is_alcohol else 0
         individual_amount = participation.custom_share_amount
         amount = common_amount + alcohol_amount + individual_amount
+        rounding_delta = c_extra + a_extra
+
+        if not first_regular_done:
+            first_regular_done = True
+        if is_alcohol and not first_alcohol_done:
+            first_alcohol_done = True
+
         invoice, _ = Invoice.objects.update_or_create(
             fundraising=fundraising,
             user=participation.user,
@@ -48,6 +65,7 @@ def finalize_fundraising(fundraising: Fundraising) -> list[Invoice]:
                 "common_amount": common_amount,
                 "alcohol_amount": alcohol_amount,
                 "individual_amount": individual_amount,
+                "rounding_delta": rounding_delta,
                 "status": Invoice.Status.PENDING,
             },
         )
