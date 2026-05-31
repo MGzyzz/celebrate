@@ -17,7 +17,7 @@ def finalize_fundraising(fundraising: Fundraising) -> list[Invoice]:
     participants = Participation.objects.select_related("user").filter(
         event=fundraising.event,
         status=Participation.Status.PARTICIPATING,
-    )
+    ).order_by("pk")
     common_items = fundraising.items.filter(status=PriceItem.Status.APPROVED, item_type=PriceItem.ItemType.COMMON)
     alcohol_items = fundraising.items.filter(status=PriceItem.Status.APPROVED, item_type=PriceItem.ItemType.ALCOHOL)
 
