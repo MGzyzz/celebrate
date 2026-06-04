@@ -110,8 +110,6 @@ class CurrentPriceItemCreateView(views.APIView):
         category_name = str(request.data.get("category", "other")).strip() or "other"
         unit = str(request.data.get("unit", "шт")).strip() or "шт"
         item_type = str(request.data.get("itemType", PriceItem.ItemType.COMMON)).strip()
-        if item_type == "group":
-            item_type = PriceItem.ItemType.SELECTED_GROUP
 
         try:
             quantity = int(request.data.get("quantity", 1))

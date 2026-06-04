@@ -226,7 +226,7 @@ class BootstrapView(APIView):
 
     @staticmethod
     def _item_payload(item):
-        item_type = "group" if item.item_type == PriceItem.ItemType.SELECTED_GROUP else item.item_type
+        item_type = item.item_type
         _status_map = {
             PriceItem.Status.PROPOSED: "proposed",
             PriceItem.Status.APPROVED: "approved",
@@ -264,6 +264,7 @@ class BootstrapView(APIView):
                 Participation.PaymentShare.EXEMPT: "exempt",
             }[participation.payment_share],
             "paid": invoice.status == Invoice.Status.PAID if invoice else False,
+            "claimed": invoice.claimed_at is not None if invoice else False,
             "invoice": invoice.amount if invoice else 0,
             "customShareAmount": participation.custom_share_amount,
         }

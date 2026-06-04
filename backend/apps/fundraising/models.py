@@ -72,7 +72,6 @@ class PriceItem(models.Model):
         COMMON = "common", "Общий"
         ALCOHOL = "alcohol", "Алкоголь"
         INDIVIDUAL = "individual", "Индивидуальный"
-        SELECTED_GROUP = "selected_group", "Для выбранной группы"
 
     fundraising = models.ForeignKey(Fundraising, on_delete=models.CASCADE, related_name="items")
     author = models.ForeignKey(TelegramUser, on_delete=models.SET_NULL, null=True, blank=True)
@@ -152,6 +151,7 @@ class Invoice(models.Model):
     rounding_delta = models.IntegerField(default=0)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.PENDING)
     sent_at = models.DateTimeField(null=True, blank=True)
+    claimed_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
     payment_method = models.CharField(max_length=120, blank=True)
     organizer_comment = models.TextField(blank=True)
