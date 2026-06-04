@@ -402,7 +402,7 @@ type Ctx = {
   isUpdatingEvent: boolean;
   updateParticipation: (status: ParticipationStatus) => Promise<unknown>;
   isUpdatingParticipation: boolean;
-  approveItem: (id: string) => Promise<unknown>;
+  approveItem: (id: string, itemType?: string) => Promise<unknown>;
   rejectItem: (id: string) => Promise<unknown>;
   finalize: () => Promise<unknown>;
   isFinalizing: boolean;
@@ -531,7 +531,7 @@ type DesignAppProps = {
   isUpdatingEvent?: boolean;
   onUpdateParticipation?: (status: ParticipationStatus) => Promise<unknown>;
   isUpdatingParticipation?: boolean;
-  onApproveItem?: (id: string) => Promise<unknown>;
+  onApproveItem?: (id: string, itemType?: string) => Promise<unknown>;
   onRejectItem?: (id: string) => Promise<unknown>;
   onFinalize?: () => Promise<unknown>;
   isFinalizing?: boolean;
@@ -675,7 +675,7 @@ export function DesignApp({
     isUpdatingEvent,
     updateParticipation: onUpdateParticipation,
     isUpdatingParticipation,
-    approveItem: onApproveItem,
+    approveItem: (id, itemType) => onApproveItem(id, itemType),
     rejectItem: onRejectItem,
     finalize: onFinalize,
     isFinalizing,
@@ -2277,15 +2277,24 @@ function CollectionCard({ collection, ctx }: { collection: Collection; ctx: Ctx 
 function ItemRow({ item, ctx, proposed }: { item: PriceItem; ctx: Ctx; proposed?: boolean }) {
   const type = itemType[item.type];
   const [busy, setBusy] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [approveType, setApproveType] = useState(item.type);
   const canModerate = proposed && ctx.role === "organizer";
+
+  const organizerTypes = [
+    { key: "common", labelKey: "type_common", c: "blue" as StatusColor },
+    { key: "alcohol", labelKey: "type_alcohol", c: "red" as StatusColor },
+    { key: "individual", labelKey: "type_individual", c: "amber" as StatusColor },
+  ];
 
   const handleApprove = async () => {
     setBusy(true);
     try {
-      await ctx.approveItem(item.id);
-      ctx.toast("Утверждено", "check");
-    } catch {
-      ctx.toast("Не удалось утвердить", "warn");
+      await ctx.approveItem(item.id, approveType);
+      ctx.toast("Товар утверждён", "check");
+      setApproving(false);
+    } catch (err) {
+      ctx.toast(getErrorText(err, "Не удалось утвердить товар"), "x");
     } finally {
       setBusy(false);
     }
@@ -2295,28 +2304,59 @@ function ItemRow({ item, ctx, proposed }: { item: PriceItem; ctx: Ctx; proposed?
     setBusy(true);
     try {
       await ctx.rejectItem(item.id);
-      ctx.toast("Отклонено", "x");
-    } catch {
-      ctx.toast("Не удалось отклонить", "warn");
+      ctx.toast("Товар отклонён");
+    } catch (err) {
+      ctx.toast(getErrorText(err, "Не удалось отклонить товар"), "x");
     } finally {
       setBusy(false);
     }
   };
 
-  return (
-    <div
-      className="lrow lrow-static"
-      style={canModerate ? { flexWrap: "wrap", alignItems: "flex-start", paddingBottom: 10 } : {}}
-    >
-      <div className="lrow-main">
-        <div className="row">{item.type !== "common" && <Badge color={type.c}>{ctx.t(type.k)}</Badge>}<span className="lrow-title">{item.name}</span></div>
-        <div className="lrow-sub">{item.qty} {item.unit} × {money(item.price)}{item.support ? ` · +${item.support} ${ctx.t("support").toLowerCase()}` : ""}{proposed ? ` · ${item.by}` : ""}</div>
+  if (approving) {
+    return (
+      <div className="listcard" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>Тип товара — {item.name}</div>
+        <div className="gap8">
+          {organizerTypes.map(({ key, labelKey, c }) => (
+            <button
+              key={key}
+              className={`select-card compact${approveType === key ? " selected" : ""}`}
+              onClick={() => setApproveType(key)}
+            >
+              <span className="badge-dot" style={{ background: `var(--st-${c})` }} />
+              <span className="spread">{ctx.t(labelKey)}</span>
+              {approveType === key && <Icon name="check" />}
+            </button>
+          ))}
+        </div>
+        <div className="row" style={{ gap: 8 }}>
+          <Btn full size="sm" disabled={busy} onClick={handleApprove}>
+            {busy ? ctx.t("loading") : "Утвердить"}
+          </Btn>
+          <Btn variant="secondary" size="sm" onClick={() => setApproving(false)}>
+            {ctx.t("close")}
+          </Btn>
+        </div>
       </div>
-      <div className="lrow-amt">{money(item.qty * item.price)}</div>
+    );
+  }
+
+  return (
+    <div className="lrow lrow-static">
+      {type && <span className="badge-dot" style={{ background: `var(--st-${type.c})`, width: 9, height: 9 }} />}
+      <div className="lrow-main">
+        <span className="lrow-title">{item.name}</span>
+        <span className="lrow-sub">{item.qty} {item.unit} · {item.by}</span>
+      </div>
+      <div className="lrow-amt num">{money(item.price * item.qty)}</div>
       {canModerate && (
-        <div style={{ flexBasis: "100%", display: "flex", gap: 8, paddingTop: 8 }}>
-          <Btn size="sm" variant="tinted" icon="check" full disabled={busy} onClick={handleApprove}>Утвердить</Btn>
-          <Btn size="sm" variant="ghost" icon="x" full disabled={busy} onClick={handleReject}>Отклонить</Btn>
+        <div className="row" style={{ gap: 6, marginLeft: 8 }}>
+          <Btn size="sm" variant="tinted" disabled={busy} onClick={() => { setApproveType(item.type); setApproving(true); }}>
+            Утвердить
+          </Btn>
+          <Btn size="sm" variant="secondary" disabled={busy} onClick={handleReject}>
+            Отклонить
+          </Btn>
         </div>
       )}
     </div>

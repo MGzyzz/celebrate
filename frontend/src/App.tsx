@@ -55,7 +55,8 @@ export function App() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
   });
   const approvePriceItemMutation = useMutation({
-    mutationFn: (id: string) => approvePriceItem(id),
+    mutationFn: ({ id, itemType }: { id: string; itemType?: string }) =>
+      approvePriceItem(id, itemType),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
   });
   const rejectPriceItemMutation = useMutation({
@@ -93,7 +94,7 @@ export function App() {
       isUpdatingEvent={updateEventMutation.isPending}
       onUpdateParticipation={(status) => updateParticipationMutation.mutateAsync(status)}
       isUpdatingParticipation={updateParticipationMutation.isPending}
-      onApproveItem={(id) => approvePriceItemMutation.mutateAsync(id)}
+      onApproveItem={(id, itemType) => approvePriceItemMutation.mutateAsync({ id, itemType })}
       onRejectItem={(id) => rejectPriceItemMutation.mutateAsync(id)}
       onFinalize={() => finalizeMutation.mutateAsync()}
       isFinalizing={finalizeMutation.isPending}

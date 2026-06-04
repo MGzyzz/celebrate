@@ -32,8 +32,11 @@ export async function createPriceItem(payload: CreatePriceItemPayload) {
   });
 }
 
-export async function approvePriceItem(id: string): Promise<unknown> {
-  return apiRequest(`/price-items/${id}/approve/`, { method: "POST" });
+export async function approvePriceItem(id: string, itemType?: string): Promise<unknown> {
+  return apiRequest(`/price-items/${id}/approve/`, {
+    method: "POST",
+    body: itemType ? JSON.stringify({ itemType }) : undefined,
+  });
 }
 
 export async function rejectPriceItem(id: string): Promise<unknown> {
