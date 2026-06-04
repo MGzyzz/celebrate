@@ -265,8 +265,41 @@ class PriceItemStatusView(views.APIView):
         return response.Response(PriceItemSerializer(item).data)
 
 
-class ApprovePriceItemView(PriceItemStatusView):
-    _new_status = PriceItem.Status.APPROVED
+class ApprovePriceItemView(views.APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request, pk):
+        user = _telegram_user(request)
+        membership = _require_organizer(user)
+        try:
+            item = PriceItem.objects.select_related("fundraising__event__group").get(pk=pk)
+        except PriceItem.DoesNotExist:
+            return response.Response(
+                {"detail": "Товар не найден."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if item.fundraising.event.group_id != membership.group_id:
+            raise exceptions.PermissionDenied("Нельзя изменять товары другой группы.")
+
+        new_type = str(request.data.get("itemType", "")).strip()
+        if new_type:
+            if new_type not in PriceItem.ItemType.values:
+                return response.Response(
+                    {"detail": "Некорректный тип товара."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            item.item_type = new_type
+
+        item.status = PriceItem.Status.APPROVED
+        try:
+            item.save()
+        except DjangoValidationError as exc:
+            return response.Response(
+                {"detail": "; ".join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return response.Response(PriceItemSerializer(item).data)
 
 
 class RejectPriceItemView(PriceItemStatusView):
