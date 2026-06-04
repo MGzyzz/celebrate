@@ -344,7 +344,8 @@ type ScreenName =
   | "finalize"
   | "profile"
   | "eventsetup"
-  | "states";
+  | "states"
+  | "manage-categories";
 
 type StackEntry = { name: ScreenName; params?: Record<string, string> };
 type ToastState = { id: number; text: string; icon?: string } | null;
@@ -408,6 +409,9 @@ type Ctx = {
   isFinalizing: boolean;
   updateParticipationShare: (payload: { userId: string; paymentShare: string; customShareAmount?: number }) => Promise<unknown>;
   isUpdatingParticipationShare: boolean;
+  createCategory: (name: string) => Promise<unknown>;
+  isCreatingCategory: boolean;
+  deleteCategory: (id: string) => Promise<unknown>;
 };
 
 const ROOT: Record<Tab, ScreenName> = {
@@ -537,6 +541,9 @@ type DesignAppProps = {
   isFinalizing?: boolean;
   onUpdateParticipationShare?: (payload: { userId: string; paymentShare: string; customShareAmount?: number }) => Promise<unknown>;
   isUpdatingParticipationShare?: boolean;
+  onCreateCategory?: (name: string) => Promise<unknown>;
+  isCreatingCategory?: boolean;
+  onDeleteCategory?: (id: string) => Promise<unknown>;
 };
 
 export function DesignApp({
@@ -566,6 +573,9 @@ export function DesignApp({
   isFinalizing = false,
   onUpdateParticipationShare = async () => undefined,
   isUpdatingParticipationShare = false,
+  onCreateCategory,
+  isCreatingCategory = false,
+  onDeleteCategory,
 }: DesignAppProps) {
   const appData = initialData;
   const backendRole: Role = appData.me.role === "organizer" ? "organizer" : "participant";
@@ -681,6 +691,9 @@ export function DesignApp({
     isFinalizing,
     updateParticipationShare: onUpdateParticipationShare,
     isUpdatingParticipationShare,
+    createCategory: onCreateCategory ?? (() => Promise.resolve()),
+    isCreatingCategory,
+    deleteCategory: onDeleteCategory ?? (() => Promise.resolve()),
   };
 
   if (isError) {
@@ -776,6 +789,8 @@ function getTitle(current: StackEntry, ctx: Ctx): [string, string?] {
       return [ctx.data.event?.id ? "Настройки события" : "Создать событие"];
     case "states":
       return [t("ui_states")];
+    case "manage-categories":
+      return [t("manage_categories")];
     default:
       return [""];
   }
@@ -818,6 +833,8 @@ function ScreenSwitch({ current, ctx }: { current: StackEntry; ctx: Ctx }) {
       return <EventSetupScreen ctx={ctx} mode={ctx.data.event?.id ? "edit" : "create"} />;
     case "states":
       return <StatesScreen ctx={ctx} />;
+    case "manage-categories":
+      return <ManageCategoriesScreen ctx={ctx} />;
     default:
       return null;
   }
@@ -1593,7 +1610,7 @@ function CollectionScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
       <Card className="invoice-shortcut" onClick={() => ctx.nav.push("invoice")}><div className="row-between"><div className="row"><Icon name="wallet" /><div><small>{ctx.t("invoice")}</small><b>{money(ctx.data.myInvoice.total)}</b></div></div><Icon name="chevronR" /></div></Card>
       <SectionLabel>{ctx.t("approved")} · {approved.length}</SectionLabel><div className="listcard">{approved.map((item) => <ItemRow key={item.id} item={item} ctx={ctx} />)}</div>
       {proposed.length > 0 && <><SectionLabel>{ctx.t("proposed")} · {proposed.length}</SectionLabel><div className="listcard">{proposed.map((item) => <ItemRow key={item.id} item={item} ctx={ctx} proposed />)}</div></>}
-    </div>{editable && <BottomAction><Btn full icon="plus" onClick={() => ctx.nav.push("additem")}>{ctx.t("add_item")}</Btn></BottomAction>}</div>
+    </div>{editable && <BottomAction><div className="stack" style={{ gap: 8 }}>{ctx.role === "organizer" && <Btn full variant="secondary" size="sm" onClick={() => ctx.nav.push("manage-categories")}>{ctx.t("manage_categories")}</Btn>}<Btn full icon="plus" onClick={() => ctx.nav.push("additem")}>{ctx.t("add_item")}</Btn></div></BottomAction>}</div>
   );
 }
 
@@ -1735,6 +1752,81 @@ function AddItemScreen({ ctx }: { ctx: Ctx }) {
           {ctx.isCreatingItem ? ctx.t("loading") : ctx.t("add_item")}
         </Btn>
       </BottomAction>
+    </div>
+  );
+}
+
+function ManageCategoriesScreen({ ctx }: { ctx: Ctx }) {
+  const [newName, setNewName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleAdd = async () => {
+    const name = newName.trim();
+    if (!name) return setError("Укажите название");
+    setError(null);
+    try {
+      await ctx.createCategory(name);
+      setNewName("");
+      ctx.toast("Категория добавлена", "check");
+    } catch (err) {
+      setError(getErrorText(err, "Не удалось добавить категорию"));
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await ctx.deleteCategory(id);
+      ctx.toast("Категория удалена");
+    } catch (err) {
+      ctx.toast(getErrorText(err, "Нельзя удалить категорию с товарами"), "x");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <div className="scroll screen-anim">
+      <div className="screen-pad stack">
+        <Field label={ctx.t("category_add")} error={error}>
+          <div className="row" style={{ gap: 8 }}>
+            <Input
+              value={newName}
+              onChange={(v) => { setNewName(v); setError(null); }}
+              placeholder={ctx.t("category_placeholder")}
+            />
+            <Btn
+              size="sm"
+              variant="tinted"
+              disabled={ctx.isCreatingCategory || !newName.trim()}
+              onClick={handleAdd}
+            >
+              <Icon name="plus" size={18} />
+            </Btn>
+          </div>
+        </Field>
+        {ctx.data.categories.length === 0 ? (
+          <div style={{ color: "var(--hint)", textAlign: "center", padding: "24px 0", fontSize: 14 }}>
+            {ctx.t("category_empty")}
+          </div>
+        ) : (
+          <div className="listcard">
+            {ctx.data.categories.map((cat) => (
+              <div key={cat.id} className="lrow lrow-static">
+                <div className="lrow-main"><span className="lrow-title">{cat.name}</span></div>
+                <button
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--hint)", padding: "4px 8px" }}
+                  disabled={deletingId === cat.id}
+                  onClick={() => handleDelete(cat.id)}
+                >
+                  <Icon name="x" size={18} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

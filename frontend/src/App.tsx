@@ -11,7 +11,7 @@ import {
   UpdateParticipationSharePayload,
   updateParticipationStatus,
 } from "./api/events";
-import { approvePriceItem, createFundraising, CreateFundraisingPayload, createPriceItem, CreatePriceItemPayload, finalizeFundraising, rejectPriceItem } from "./api/fundraising";
+import { approvePriceItem, createCategory, createFundraising, CreateFundraisingPayload, createPriceItem, CreatePriceItemPayload, deleteCategory, finalizeFundraising, rejectPriceItem } from "./api/fundraising";
 import { createPlace, CreatePlacePayload, supportPlace } from "./api/places";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -71,6 +71,14 @@ export function App() {
     mutationFn: (payload: UpdateParticipationSharePayload) => updateParticipationShare(payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
   });
+  const createCategoryMutation = useMutation({
+    mutationFn: (name: string) => createCategory(name),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
+  });
+  const deleteCategoryMutation = useMutation({
+    mutationFn: (id: string) => deleteCategory(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
+  });
 
   return (
     <DesignApp
@@ -100,6 +108,9 @@ export function App() {
       isFinalizing={finalizeMutation.isPending}
       onUpdateParticipationShare={(payload) => updateParticipationShareMutation.mutateAsync(payload)}
       isUpdatingParticipationShare={updateParticipationShareMutation.isPending}
+      onCreateCategory={async (name) => { await createCategoryMutation.mutateAsync(name); }}
+      isCreatingCategory={createCategoryMutation.isPending}
+      onDeleteCategory={async (id) => { await deleteCategoryMutation.mutateAsync(id); }}
     />
   );
 }

@@ -46,3 +46,14 @@ export async function rejectPriceItem(id: string): Promise<unknown> {
 export async function finalizeFundraising(): Promise<unknown> {
   return apiRequest("/fundraisings/current/finalize/", { method: "POST" });
 }
+
+export async function createCategory(name: string): Promise<{ id: string; name: string }> {
+  return apiRequest("/fundraising/categories/", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  }) as Promise<{ id: string; name: string }>;
+}
+
+export async function deleteCategory(id: string): Promise<void> {
+  await apiRequest(`/fundraising/categories/${id}/`, { method: "DELETE" });
+}
