@@ -73,8 +73,10 @@ class BootstrapView(APIView):
                 "participants": [self._participant_payload(p, invoice_map.get(p.user_id)) for p in self._participants(event)],
                 "myInvoice": self._invoice_payload(user, active_fundraising),
                 "categories": [
-                    {"id": str(cat.pk), "name": cat.name}
-                    for cat in ItemCategory.objects.filter(group=group).order_by("sort_order", "name")
+                    {"id": str(cat.pk), "name": cat.name, "itemCount": cat.item_count}
+                    for cat in ItemCategory.objects.filter(group=group).annotate(
+                        item_count=Count("items")
+                    ).order_by("sort_order", "name")
                 ],
             }
         )

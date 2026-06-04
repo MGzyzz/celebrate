@@ -1811,20 +1811,40 @@ function ManageCategoriesScreen({ ctx }: { ctx: Ctx }) {
             {ctx.t("category_empty")}
           </div>
         ) : (
-          <div className="listcard">
-            {ctx.data.categories.map((cat) => (
-              <div key={cat.id} className="lrow lrow-static">
-                <div className="lrow-main"><span className="lrow-title">{cat.name}</span></div>
-                <button
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--hint)", padding: "4px 8px" }}
-                  disabled={deletingId === cat.id}
-                  onClick={() => handleDelete(cat.id)}
-                >
-                  <Icon name="x" size={18} />
-                </button>
-              </div>
-            ))}
-          </div>
+          <>
+            <div className="chip-row wrap" style={{ gap: 8 }}>
+              {ctx.data.categories.map((cat) => {
+                const hasItems = cat.itemCount > 0;
+                return (
+                  <div
+                    key={cat.id}
+                    className="chip"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingRight: 6, opacity: deletingId === cat.id ? 0.5 : 1 }}
+                    title={hasItems ? `${cat.itemCount} товар(ов) — сначала удалите товары` : undefined}
+                  >
+                    <span>{cat.name}</span>
+                    {hasItems
+                      ? <span style={{ fontSize: 11, color: "var(--hint)", fontWeight: 600 }}>{cat.itemCount}</span>
+                      : (
+                        <button
+                          style={{ display: "flex", alignItems: "center", background: "none", border: "none", cursor: "pointer", color: "var(--hint)", padding: 0 }}
+                          disabled={deletingId === cat.id}
+                          onClick={() => handleDelete(cat.id)}
+                        >
+                          <Icon name="x" size={14} />
+                        </button>
+                      )
+                    }
+                  </div>
+                );
+              })}
+            </div>
+            {ctx.data.categories.some((c) => c.itemCount > 0) && (
+              <p style={{ fontSize: 12.5, color: "var(--hint)", margin: 0 }}>
+                Категории с товарами нельзя удалить — сначала удалите товары из сбора.
+              </p>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -2064,7 +2084,7 @@ function ParticipantScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
                 <span className="muted">{ctx.t("invoice_total")}</span>
                 <b className="big-num">{money(participant.invoice)}</b>
               </div>
-              <div className="row-between">
+              <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
                 <Badge color={participant.paid ? "green" : "amber"}>{participant.paid ? ctx.t("paid") : ctx.t("not_paid")}</Badge>
                 <Btn size="sm" variant={participant.paid ? "secondary" : "tinted"} icon={participant.paid ? "x" : "check"} onClick={() => { update({ paid: !participant.paid }); ctx.toast(participant.paid ? ctx.t("not_paid") : ctx.t("toast_paid")); }}>{participant.paid ? "Отменить" : ctx.t("mark_paid")}</Btn>
               </div>
@@ -2433,6 +2453,27 @@ function ItemRow({ item, ctx, proposed }: { item: PriceItem; ctx: Ctx; proposed?
     );
   }
 
+  if (canModerate) {
+    return (
+      <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {type && <span className="badge-dot" style={{ background: `var(--st-${type.c})`, width: 9, height: 9, flexShrink: 0 }} />}
+          <span className="lrow-title" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+          <span className="lrow-amt num">{money(item.price * item.qty)}</span>
+        </div>
+        <span className="lrow-sub" style={{ paddingLeft: type ? 17 : 0 }}>{item.qty} {item.unit} · {item.by}</span>
+        <div className="row" style={{ gap: 8, paddingLeft: type ? 17 : 0 }}>
+          <Btn size="sm" variant="tinted" disabled={busy} onClick={() => { setApproveType(item.type); setApproving(true); }}>
+            Утвердить
+          </Btn>
+          <Btn size="sm" variant="secondary" disabled={busy} onClick={handleReject}>
+            Отклонить
+          </Btn>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="lrow lrow-static">
       {type && <span className="badge-dot" style={{ background: `var(--st-${type.c})`, width: 9, height: 9 }} />}
@@ -2441,16 +2482,6 @@ function ItemRow({ item, ctx, proposed }: { item: PriceItem; ctx: Ctx; proposed?
         <span className="lrow-sub">{item.qty} {item.unit} · {item.by}</span>
       </div>
       <div className="lrow-amt num">{money(item.price * item.qty)}</div>
-      {canModerate && (
-        <div className="row" style={{ gap: 6, marginLeft: 8 }}>
-          <Btn size="sm" variant="tinted" disabled={busy} onClick={() => { setApproveType(item.type); setApproving(true); }}>
-            Утвердить
-          </Btn>
-          <Btn size="sm" variant="secondary" disabled={busy} onClick={handleReject}>
-            Отклонить
-          </Btn>
-        </div>
-      )}
     </div>
   );
 }

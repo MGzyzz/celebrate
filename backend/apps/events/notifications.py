@@ -1,3 +1,4 @@
+import html
 import json
 import threading
 import urllib.request
@@ -8,50 +9,84 @@ from apps.events.bootstrap import _ru_date
 
 
 def _fmt_amount(amount: int) -> str:
-    """Format an integer with Russian thousands separator (space)."""
-    return f"{amount:,}".replace(",", " ")
+    return f"{amount:,}".replace(",", " ")  # narrow no-break space — стандарт для рус. чисел
 
 
-def _build_message(fundraising, invoice) -> str:
+def _e(text: str) -> str:
+    return html.escape(str(text))
+
+
+def _build_message(fundraising, invoice, approved_items=None) -> tuple[str, dict]:
     event = fundraising.event
     user = invoice.user
-    deadline_date = _ru_date(fundraising.deadline.date())
+    deadline = _ru_date(fundraising.deadline.date())
 
-    amount = _fmt_amount(invoice.amount)
-    common_amount = _fmt_amount(invoice.common_amount)
-    alcohol_amount = _fmt_amount(invoice.alcohol_amount)
+    amount_str = _fmt_amount(invoice.amount)
+    payment_phone = (event.payment_phone or "").strip()
+    payment_holder = (event.payment_holder or "").strip()
+    comment = f"{event.title} — {user.first_name}"
 
-    lines = [
-        f"\U0001f393 {event.title} — твой счёт готов!",
+    # --- Детализация счёта ---
+    breakdown_lines = [f"Общая часть: {_fmt_amount(invoice.common_amount)} тг"]
+    if invoice.alcohol_amount > 0:
+        breakdown_lines.append(f"Алкоголь: {_fmt_amount(invoice.alcohol_amount)} тг")
+    if invoice.individual_amount > 0:
+        breakdown_lines.append(f"Индивидуально: {_fmt_amount(invoice.individual_amount)} тг")
+
+    # --- Чек товаров ---
+    items_lines = []
+    if approved_items:
+        for it in approved_items:
+            qty_str = f" ({it.quantity} {it.unit})" if it.quantity > 1 else ""
+            items_lines.append(f"• {_e(it.title)}{qty_str} — {_fmt_amount(it.total_price)} тг")
+
+    parts = [
+        f"<b>{_e(event.title)} — твой счёт готов</b>",
         "",
-        f"Итого: {amount} тг",
+        f"<b>{_e(amount_str)} тг</b>",
+        f"Срок оплаты: <i>{_e(deadline)}</i>",
         "",
-        "Из чего:",
-        f"• Общая часть: {common_amount} тг",
+        f"<blockquote expandable>{_e(chr(10).join(breakdown_lines))}</blockquote>",
     ]
 
-    if invoice.alcohol_amount != 0:
-        lines.append(f"• Алкоголь: {alcohol_amount} тг")
-
-    lines.append("")
-    lines.append(f"Оплати до {deadline_date}:")
-
-    payment_phone = event.payment_phone or ""
-    payment_holder = event.payment_holder or ""
+    if items_lines:
+        parts += [
+            "",
+            f"<blockquote expandable>Товары:\n{chr(10).join(items_lines)}</blockquote>",
+        ]
 
     if payment_phone:
-        lines.append(f"{payment_phone} ({payment_holder})")
-        lines.append(f"Комментарий: {event.title} — {user.first_name}")
+        parts += [
+            "",
+            f"Kaspi: <code>{_e(payment_phone)}</code>  {_e(payment_holder)}",
+            f"Комментарий: <code>{_e(comment)}</code>",
+        ]
 
-    lines.append("")
-    lines.append("Организатор подтвердит оплату вручную.")
+    parts += [
+        "",
+        "<i>Организатор подтвердит оплату вручную.</i>",
+    ]
 
-    return "\n".join(lines)
+    text = "\n".join(parts)
+
+    reply_markup = {
+        "inline_keyboard": [[
+            {"text": "↗ Открыть Kaspi", "url": "https://kaspi.kz"},
+            {"text": "✓ Я оплатил", "callback_data": f"paid:{invoice.id}"},
+        ]]
+    }
+
+    return text, reply_markup
 
 
-def _send_one(token: str, chat_id, text: str) -> None:
+def _send_one(token: str, chat_id, text: str, reply_markup: dict) -> None:
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = json.dumps({"chat_id": chat_id, "text": text}).encode("utf-8")
+    payload = json.dumps({
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "reply_markup": reply_markup,
+    }).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=10):
@@ -61,20 +96,19 @@ def _send_one(token: str, chat_id, text: str) -> None:
 
 
 def _send_all(token: str, fundraising, invoices) -> None:
+    from apps.fundraising.models import PriceItem
+    approved_items = list(
+        fundraising.items.filter(status=PriceItem.Status.APPROVED).order_by("item_type", "title")
+    )
     for invoice in invoices:
         try:
-            message = _build_message(fundraising, invoice)
-            _send_one(token, invoice.user.telegram_id, message)
+            text, reply_markup = _build_message(fundraising, invoice, approved_items)
+            _send_one(token, invoice.user.telegram_id, text, reply_markup)
         except Exception:
             pass
 
 
 def send_finalize_notifications(fundraising, invoices) -> None:
-    """Send payment notification to each invoice recipient via Telegram.
-
-    Runs in a background daemon thread so it does not block the view response.
-    Silently no-ops when TELEGRAM_BOT_TOKEN is not configured.
-    """
     token = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
     if not token:
         return

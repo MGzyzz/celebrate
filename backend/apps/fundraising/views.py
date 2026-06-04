@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import Count
 from django.utils import timezone
 from rest_framework import decorators, exceptions, response, status, views, viewsets
 
@@ -328,8 +329,10 @@ class CategoryListCreateView(views.APIView):
                 {"detail": "Вы не состоите в группе."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        cats = ItemCategory.objects.filter(group=membership.group).order_by("sort_order", "name")
-        return response.Response([{"id": c.pk, "name": c.name} for c in cats])
+        cats = ItemCategory.objects.filter(group=membership.group).annotate(
+            item_count=Count("items")
+        ).order_by("sort_order", "name")
+        return response.Response([{"id": c.pk, "name": c.name, "itemCount": c.item_count} for c in cats])
 
     def post(self, request):
         user = _telegram_user(request)

@@ -48,7 +48,10 @@ class Command(BaseCommand):
         if not url.startswith("https://"):
             raise CommandError("Telegram requires an HTTPS webhook URL.")
 
-        payload = json.dumps({"url": url}).encode("utf-8")
+        payload = json.dumps({
+            "url": url,
+            "allowed_updates": ["message", "callback_query"],
+        }).encode("utf-8")
         self._call(base + "/setWebhook", payload)
 
     def _call(self, url: str, data: bytes) -> None:

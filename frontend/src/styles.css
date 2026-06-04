@@ -585,11 +585,13 @@ button.card {
 }
 
 .lrow-title {
+  display: block;
   font-size: 15px;
   font-weight: 550;
 }
 
 .lrow-sub {
+  display: block;
   margin-top: 2px;
   color: var(--hint);
   font-size: 12.5px;
