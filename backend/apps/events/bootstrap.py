@@ -6,7 +6,7 @@ from apps.accounts.models import Membership
 from apps.accounts.serializers import TelegramUserSerializer
 from apps.accounts.services import TelegramAuthError, upsert_telegram_user_from_init_data, validate_telegram_init_data
 from apps.events.models import Event, Participation
-from apps.fundraising.models import Fundraising, Invoice, PriceItem
+from apps.fundraising.models import Fundraising, Invoice, ItemCategory, PriceItem
 from apps.places.models import PlaceIdea, PlaceVote
 
 
@@ -52,6 +52,7 @@ class BootstrapView(APIView):
                     "items": [],
                     "participants": [],
                     "myInvoice": None,
+                    "categories": [],
                 }
             )
 
@@ -71,6 +72,10 @@ class BootstrapView(APIView):
                 "items": [self._item_payload(item) for item in self._items(active_fundraising)],
                 "participants": [self._participant_payload(p, invoice_map.get(p.user_id)) for p in self._participants(event)],
                 "myInvoice": self._invoice_payload(user, active_fundraising),
+                "categories": [
+                    {"id": str(cat.pk), "name": cat.name}
+                    for cat in ItemCategory.objects.filter(group=group).order_by("sort_order", "name")
+                ],
             }
         )
 

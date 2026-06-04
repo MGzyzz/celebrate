@@ -281,3 +281,59 @@ class PriceItemSupportViewSet(viewsets.ModelViewSet):
 class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = Invoice.objects.select_related("fundraising", "user").all()
     serializer_class = InvoiceSerializer
+
+
+class CategoryListCreateView(views.APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        user = _telegram_user(request)
+        membership = _current_membership(user)
+        if not membership:
+            return response.Response(
+                {"detail": "Вы не состоите в группе."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        cats = ItemCategory.objects.filter(group=membership.group).order_by("sort_order", "name")
+        return response.Response([{"id": c.pk, "name": c.name} for c in cats])
+
+    def post(self, request):
+        user = _telegram_user(request)
+        membership = _require_organizer(user)
+        name = str(request.data.get("name", "")).strip()
+        if not name:
+            return response.Response(
+                {"detail": "Укажите название категории."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        cat, created = ItemCategory.objects.get_or_create(group=membership.group, name=name)
+        if not created:
+            return response.Response(
+                {"detail": "Категория уже существует."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return response.Response({"id": cat.pk, "name": cat.name}, status=status.HTTP_201_CREATED)
+
+
+class CategoryDeleteView(views.APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def delete(self, request, pk):
+        user = _telegram_user(request)
+        membership = _require_organizer(user)
+        try:
+            cat = ItemCategory.objects.get(pk=pk, group=membership.group)
+        except ItemCategory.DoesNotExist:
+            return response.Response(
+                {"detail": "Категория не найдена."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if cat.items.exists():
+            return response.Response(
+                {"detail": "Нельзя удалить категорию с товарами."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        cat.delete()
+        return response.Response(status=status.HTTP_204_NO_CONTENT)
