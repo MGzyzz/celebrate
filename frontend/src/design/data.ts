@@ -23,6 +23,13 @@ export const data = {
     },
   },
   me: { id: "u1", name: "Алмас", role: "participant", participation: "in" },
+  categories: [
+    { id: "cat1", name: "Еда" },
+    { id: "cat2", name: "Напитки" },
+    { id: "cat3", name: "Декор" },
+    { id: "cat4", name: "Музыка" },
+    { id: "cat5", name: "Другое" },
+  ],
   places: [
     {
       id: "p1",

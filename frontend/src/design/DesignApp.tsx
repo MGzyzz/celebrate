@@ -443,7 +443,6 @@ const itemType: Record<string, { k: string; c: StatusColor }> = {
   common: { k: "type_common", c: "blue" },
   alcohol: { k: "type_alcohol", c: "red" },
   individual: { k: "type_individual", c: "amber" },
-  group: { k: "type_group", c: "gray" },
 };
 
 const partLabel: Record<string, string> = {
@@ -461,7 +460,6 @@ const payCats: Record<string, { k: string; c: StatusColor }> = {
   exempt: { k: "cat_exempt", c: "gray" },
 };
 
-const cats = ["food", "drinks", "decor", "music", "other"];
 const amenityList = ["kitchen", "grill", "music", "beds", "parking", "dishes", "pool", "lounge", "noise", "deposit"];
 
 const iconMap = {
@@ -1021,15 +1019,20 @@ function PlacesScreen({ ctx }: { ctx: Ctx }) {
   const [view, setView] = useState<"map" | "list">("map");
   const [filter, setFilter] = useState("all");
   const [selected, setSelected] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    setLoading(true);
-    const timer = window.setTimeout(() => setLoading(false), 800);
-    return () => window.clearTimeout(timer);
-  }, [view]);
+  const [showEmptyList, setShowEmptyList] = useState(false);
   const filtered = ctx.data.places.filter((place) => filter === "all" || place.interest === filter);
   const selectedPlace = ctx.data.places.find((place) => place.id === selected);
   const filters = <FilterChips filter={filter} setFilter={setFilter} ctx={ctx} />;
+
+  useEffect(() => {
+    if (view !== "list" || filtered.length > 0) {
+      setShowEmptyList(false);
+      return;
+    }
+    setShowEmptyList(true);
+    const timer = window.setTimeout(() => setShowEmptyList(false), 3200);
+    return () => window.clearTimeout(timer);
+  }, [view, filter, filtered.length]);
 
   return (
     <div className="screen-anim full-screen">
@@ -1040,13 +1043,12 @@ function PlacesScreen({ ctx }: { ctx: Ctx }) {
           <div className="map-filters">{filters}</div>
           <button className="btn btn-primary map-fab" onClick={() => ctx.nav.push("addplace")}><Icon name="plus" size={20} stroke={2.4} />{ctx.t("add_place")}</button>
           {selectedPlace && <MapSheet place={selectedPlace} ctx={ctx} onClose={() => setSelected(null)} />}
-          {loading && <MapLoading t={ctx.t} />}
         </div>
       ) : (
         <div className="scroll">
           {filters}
           <div className="screen-pad gap12">
-            {filtered.length ? filtered.map((place) => <PlaceListCard key={place.id} place={place} ctx={ctx} />) : <StateView icon="pin" title={ctx.t("empty_places")} sub={ctx.t("empty_places_sub")} action={<Btn full variant="secondary" onClick={() => setFilter("all")}>{ctx.t("reset_filters")}</Btn>} />}
+            {filtered.length ? filtered.map((place) => <PlaceListCard key={place.id} place={place} ctx={ctx} />) : showEmptyList ? <StateView icon="pin" title={ctx.t("empty_places")} sub={ctx.t("empty_places_sub")} action={<Btn full variant="secondary" onClick={() => setFilter("all")}>{ctx.t("reset_filters")}</Btn>} /> : null}
           </div>
         </div>
       )}
@@ -1218,6 +1220,7 @@ function YandexPlacesMap({ places, totalPlaces, selected, onSelect, t }: { place
   return (
     <div className="map">
       <div ref={containerRef} className="yandex-map" />
+      {status === "loading" && <MapLoading t={t} />}
       {status === "missing-key" && <MapMessage icon="lock" title="Yandex Maps не настроен" text="Добавьте ключ в VITE_YANDEX_MAPS_API_KEY и перезапустите frontend." />}
       {status === "error" && <MapMessage icon="warn" title="Карта не загрузилась" text="Проверьте ключ Yandex Maps и доступ к api-maps.yandex.ru." />}
       {status === "ready" && totalPlaces === 0 && showEmptyNotice && <MapMessage icon="pin" title="Мест пока нет" text="Добавьте первое место, и оно появится на карте." />}
@@ -1595,16 +1598,48 @@ function CollectionScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
 }
 
 function AddItemScreen({ ctx }: { ctx: Ctx }) {
-  const [form, setForm] = useState({ name: "", cat: "food", qty: 1, unit: "шт", price: "", type: "common", comment: "", link: "" });
+  const categories = ctx.data.categories;
+  const [form, setForm] = useState({
+    name: "",
+    cat: categories[0]?.name ?? "",
+    qty: 1,
+    unit: "шт",
+    price: "",
+    type: "common",
+    comment: "",
+    link: "",
+  });
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const query = form.name.trim().toLowerCase();
-  const duplicate = query.length >= 2 && !dismissed ? ctx.data.items.find((item) => item.name.toLowerCase().includes(query) || query.includes(item.name.toLowerCase().slice(0, 3))) : undefined;
-  const set = (key: keyof typeof form, value: string | number) => setForm((state) => ({ ...state, [key]: value }));
+  const duplicate =
+    query.length >= 2 && !dismissed
+      ? ctx.data.items.find(
+          (item) =>
+            item.name.toLowerCase().includes(query) ||
+            query.includes(item.name.toLowerCase().slice(0, 3))
+        )
+      : undefined;
+  const set = (key: keyof typeof form, value: string | number) =>
+    setForm((state) => ({ ...state, [key]: value }));
+
+  const participantTypes = [
+    { key: "common", labelKey: "type_for_all", c: "blue" as StatusColor },
+    { key: "individual", labelKey: "type_just_me", c: "amber" as StatusColor },
+  ];
+  const organizerTypes = [
+    { key: "common", labelKey: "type_common", c: "blue" as StatusColor },
+    { key: "alcohol", labelKey: "type_alcohol", c: "red" as StatusColor },
+    { key: "individual", labelKey: "type_individual", c: "amber" as StatusColor },
+  ];
+  const typeOptions = ctx.role === "organizer" ? organizerTypes : participantTypes;
+
   const submit = async () => {
     const unitPrice = Number(form.price);
     if (!form.name.trim()) return setError("Укажите название");
-    if (!Number.isInteger(unitPrice) || unitPrice < 0) return setError("Цена должна быть целым числом от 0");
+    if (!form.cat) return setError("Сначала организатор должен создать категории");
+    if (!Number.isInteger(unitPrice) || unitPrice < 0)
+      return setError("Цена должна быть целым числом от 0");
     setError(null);
     try {
       await ctx.createItem({
@@ -1620,20 +1655,87 @@ function AddItemScreen({ ctx }: { ctx: Ctx }) {
       ctx.toast(ctx.t("toast_saved"));
       ctx.nav.pop();
     } catch (err) {
-      setError(getErrorText(err, "Не удалось добавить товар. Проверьте активный сбор и соединение."));
+      setError(
+        getErrorText(err, "Не удалось добавить товар. Проверьте активный сбор и соединение.")
+      );
     }
   };
+
+  if (categories.length === 0) {
+    return (
+      <div className="scroll screen-anim">
+        <div className="screen-pad stack">
+          <Notice tone="info" icon="info">
+            Организатор ещё не создал категории. Попросите организатора добавить их в настройках сбора.
+          </Notice>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="scroll screen-anim"><div className="screen-pad gap12">
-      <Notice tone="info" icon="lock">{ctx.t("no_edit_after")}</Notice>
-      <Field label={ctx.t("item_name")} error={error}><Input value={form.name} onChange={(value) => { set("name", value); setError(null); setDismissed(false); }} placeholder="Например, Кола" /></Field>
-      {duplicate && <div className="duplicate-card"><div className="row"><Icon name="info" /><b>{ctx.t("dup_title")}</b></div><p>«{duplicate.name}» {ctx.t("already_in_list")} - {duplicate.qty} {duplicate.unit} × {money(duplicate.price)}</p><div className="row"><Btn size="sm" variant="tinted" full onClick={() => { ctx.toast(ctx.t("dup_add_support"), "heart"); ctx.nav.pop(); }}>{ctx.t("dup_add_support")}</Btn><Btn size="sm" variant="secondary" onClick={() => setDismissed(true)}>{ctx.t("close")}</Btn></div></div>}
-      <Field label={ctx.t("category")}><div className="chip-row wrap">{cats.map((cat) => <Chip key={cat} active={form.cat === cat} onClick={() => set("cat", cat)}>{ctx.t(`cat_${cat}`)}</Chip>)}</div></Field>
-      <div className="row"><Field label={ctx.t("qty")}><Stepper value={form.qty} onChange={(value) => set("qty", value)} /></Field><Field label={ctx.t("unit")}><Input value={form.unit} onChange={(value) => set("unit", value)} placeholder="шт" /></Field><Field label={ctx.t("price")}><Input value={formatDigits(form.price)} onChange={(value) => set("price", onlyDigits(value))} placeholder="0" suffix="тг" /></Field></div>
-      <Field label={ctx.t("item_type")}><div className="gap8">{Object.entries(itemType).map(([key, value]) => <button key={key} className={`select-card compact${form.type === key ? " selected" : ""}`} onClick={() => set("type", key)}><span className="badge-dot" style={{ background: `var(--st-${value.c})` }} /><span className="spread">{ctx.t(value.k)}</span>{form.type === key && <Icon name="check" />}</button>)}</div></Field>
-      <Field label={ctx.t("comment")} optional={ctx.t("optional")}><Input value={form.comment} onChange={(value) => set("comment", value)} placeholder="Детали для остальных" /></Field>
-      <Field label={ctx.t("shop_link")} optional={ctx.t("optional")}><Input value={form.link} onChange={(value) => set("link", value)} placeholder="https://" prefix={<Icon name="arrowUR" size={16} />} /></Field>
-    </div><BottomAction><Btn full disabled={ctx.isCreatingItem} onClick={submit}>{ctx.isCreatingItem ? ctx.t("loading") : ctx.t("add_item")}</Btn></BottomAction></div>
+    <div className="scroll screen-anim">
+      <div className="screen-pad gap12">
+        <Notice tone="info" icon="lock">{ctx.t("no_edit_after")}</Notice>
+        <Field label={ctx.t("item_name")} error={error}>
+          <Input
+            value={form.name}
+            onChange={(value) => { set("name", value); setError(null); setDismissed(false); }}
+            placeholder="Например, Кола"
+          />
+        </Field>
+        {duplicate && (
+          <div className="duplicate-card">
+            <div className="row"><Icon name="info" /><b>{ctx.t("dup_title")}</b></div>
+            <p>«{duplicate.name}» {ctx.t("already_in_list")} — {duplicate.qty} {duplicate.unit} × {money(duplicate.price)}</p>
+            <div className="row">
+              <Btn size="sm" variant="tinted" full onClick={() => { ctx.toast(ctx.t("dup_add_support"), "heart"); ctx.nav.pop(); }}>{ctx.t("dup_add_support")}</Btn>
+              <Btn size="sm" variant="secondary" onClick={() => setDismissed(true)}>{ctx.t("close")}</Btn>
+            </div>
+          </div>
+        )}
+        <Field label={ctx.t("category")}>
+          <div className="chip-row wrap">
+            {categories.map((cat) => (
+              <Chip key={cat.id} active={form.cat === cat.name} onClick={() => set("cat", cat.name)}>
+                {cat.name}
+              </Chip>
+            ))}
+          </div>
+        </Field>
+        <div className="row">
+          <Field label={ctx.t("qty")}><Stepper value={form.qty} onChange={(value) => set("qty", value)} /></Field>
+          <Field label={ctx.t("unit")}><Input value={form.unit} onChange={(value) => set("unit", value)} placeholder="шт" /></Field>
+          <Field label={ctx.t("price")}><Input value={formatDigits(form.price)} onChange={(value) => set("price", onlyDigits(value))} placeholder="0" suffix="тг" /></Field>
+        </div>
+        <Field label={ctx.t("item_type")}>
+          <div className="gap8">
+            {typeOptions.map(({ key, labelKey, c }) => (
+              <button
+                key={key}
+                className={`select-card compact${form.type === key ? " selected" : ""}`}
+                onClick={() => set("type", key)}
+              >
+                <span className="badge-dot" style={{ background: `var(--st-${c})` }} />
+                <span className="spread">{ctx.t(labelKey)}</span>
+                {form.type === key && <Icon name="check" />}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label={ctx.t("comment")} optional={ctx.t("optional")}>
+          <Input value={form.comment} onChange={(value) => set("comment", value)} placeholder="Детали для остальных" />
+        </Field>
+        <Field label={ctx.t("shop_link")} optional={ctx.t("optional")}>
+          <Input value={form.link} onChange={(value) => set("link", value)} placeholder="https://" prefix={<Icon name="arrowUR" size={16} />} />
+        </Field>
+      </div>
+      <BottomAction>
+        <Btn full disabled={ctx.isCreatingItem} onClick={submit}>
+          {ctx.isCreatingItem ? ctx.t("loading") : ctx.t("add_item")}
+        </Btn>
+      </BottomAction>
+    </div>
   );
 }
 
@@ -1746,12 +1848,12 @@ function ParticipantsScreen({ ctx }: { ctx: Ctx }) {
   const hasCollection = ctx.data.collections.length > 0;
   const hasParticipants = ctx.participants.length > 0;
   const counts = {
-    in: ctx.participants.filter((p) => p.participation === "in").length,
-    out: ctx.participants.filter((p) => p.participation === "out" || p.participation === "exempt").length,
+    in: ctx.participants.filter((p) => p.participation === "in" && p.payCat !== "exempt").length,
+    out: ctx.participants.filter((p) => p.participation === "out" || p.payCat === "exempt").length,
     maybe: ctx.participants.filter((p) => p.participation === "maybe").length,
     none: ctx.participants.filter((p) => p.participation === "none").length,
   };
-  const list = ctx.participants.filter((p) => filter === "all" || (filter === "paid" ? p.paid : filter === "unpaid" ? !p.paid && p.participation === "in" : p.participation === filter));
+  const list = ctx.participants.filter((p) => filter === "all" || (filter === "paid" ? p.paid : filter === "unpaid" ? !p.paid && p.participation === "in" && p.payCat !== "exempt" : filter === "out" ? (p.participation === "out" || p.payCat === "exempt") : filter === "in" ? p.participation === "in" && p.payCat !== "exempt" : p.participation === filter));
   if (!isOrg) {
     return <div className="scroll screen-anim"><div className="screen-pad gap12"><div className="row"><MiniStat n={counts.in} label={ctx.t("f_in")} c="green" /><MiniStat n={counts.maybe} label={ctx.t("f_maybe")} c="amber" /><MiniStat n={counts.none} label={ctx.t("f_none")} c="gray" /></div><Notice tone="info" icon="info">Суммы и счета видит только организатор</Notice><ParticipantList participants={ctx.participants} ctx={ctx} publicOnly /></div></div>;
   }
@@ -1887,12 +1989,14 @@ function FinalizeScreen({ ctx }: { ctx: Ctx }) {
   const [confirm, setConfirm] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const collection = ctx.data.collections[0];
-  const willReceive = ctx.participants.filter((p) => p.participation === "in");
-  const wontReceive = ctx.participants.filter((p) => p.participation === "out" || p.participation === "exempt");
+  const willReceive = ctx.participants.filter((p) => p.participation === "in" && p.payCat !== "exempt");
+  const wontReceive = ctx.participants.filter((p) => p.participation === "out" || p.payCat === "exempt");
   const noAnswer = ctx.participants.filter((p) => p.participation === "none" || p.participation === "maybe");
-  const total = willReceive.reduce((sum, p) => sum + p.invoice, 0);
+  const invoiceTotal = willReceive.reduce((sum, p) => sum + p.invoice, 0);
   const planned = collection?.planned ?? 0;
-  const remaining = planned - (collection?.approved ?? 0);
+  const approvedTotal = collection?.approved ?? 0;
+  const total = invoiceTotal > 0 ? invoiceTotal : approvedTotal;
+  const remaining = planned - approvedTotal;
 
   if (!collection) {
     return <div className="scroll screen-anim"><div className="screen-pad stack"><StateView icon="cart" title="Сбор не создан" sub="Создайте сбор, добавьте товары и дождитесь ответов участников." action={<Btn full icon="plus" onClick={() => ctx.nav.push("createcollection")}>{ctx.t("create_collection")}</Btn>} /></div></div>;
@@ -1900,7 +2004,7 @@ function FinalizeScreen({ ctx }: { ctx: Ctx }) {
   if (willReceive.length === 0) {
     return <div className="scroll screen-anim"><div className="screen-pad stack"><StateView icon="users" title="Некому отправлять счет" sub="Сначала участники должны подтвердить участие." /></div></div>;
   }
-  if (total <= 0) {
+  if (approvedTotal <= 0) {
     return <div className="scroll screen-anim"><div className="screen-pad stack"><StateView icon="wallet" title="Сумма счета равна 0" sub="Добавьте и утвердите товары, чтобы появился расчет." /></div></div>;
   }
 
@@ -1953,14 +2057,29 @@ function ProfileScreen({ ctx }: { ctx: Ctx }) {
   );
 }
 
+function formatKaspiPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  const local = digits.startsWith("7") || digits.startsWith("8") ? digits.slice(1) : digits;
+  const d = local.slice(0, 10);
+  if (d.length === 0) return "+7 ";
+  if (d.length <= 3) return `+7 (${d}`;
+  if (d.length <= 6) return `+7 (${d.slice(0, 3)}) ${d.slice(3)}`;
+  if (d.length <= 8) return `+7 (${d.slice(0, 3)}) ${d.slice(3, 6)} ${d.slice(6)}`;
+  return `+7 (${d.slice(0, 3)}) ${d.slice(3, 6)} ${d.slice(6, 8)} ${d.slice(8)}`;
+}
+
 function EventSetupScreen({ ctx, mode }: { ctx: Ctx; mode: "create" | "edit" }) {
   const event = ctx.data.event;
   const optionalText = (value: string) => value.trim() || undefined;
   const [title, setTitle] = useState(mode === "edit" ? event.title : "");
   const [eventDate, setEventDate] = useState(mode === "edit" ? event.date : "");
   const [description, setDescription] = useState(mode === "edit" ? event.description : "");
-  const [paymentPhone, setPaymentPhone] = useState(mode === "edit" ? event.payment.phone : "");
-  const [paymentHolder, setPaymentHolder] = useState(mode === "edit" ? event.payment.holder : "");
+  const [paymentPhone, setPaymentPhone] = useState(
+    mode === "edit" && event.payment.phone ? formatKaspiPhone(event.payment.phone) : "+7 "
+  );
+  const [paymentHolder, setPaymentHolder] = useState(
+    (mode === "edit" ? event.payment.holder : "").toUpperCase()
+  );
   const [error, setError] = useState<string | null>(null);
 
   const isBusy = ctx.isCreatingEvent || ctx.isUpdatingEvent;
@@ -2033,10 +2152,18 @@ function EventSetupScreen({ ctx, mode }: { ctx: Ctx; mode: "create" | "edit" }) 
           />
         </Field>
         <Field label="Номер Kaspi" optional={ctx.t("optional")}>
-          <Input value={paymentPhone} onChange={setPaymentPhone} placeholder="+7 777 000 00 00" />
+          <Input
+            value={paymentPhone}
+            onChange={(v) => setPaymentPhone(formatKaspiPhone(v))}
+            placeholder="+7 (777) 000 00 00"
+          />
         </Field>
         <Field label="Владелец Kaspi" optional={ctx.t("optional")}>
-          <Input value={paymentHolder} onChange={setPaymentHolder} placeholder="Имя Ф." />
+          <Input
+            value={paymentHolder}
+            onChange={(v) => setPaymentHolder(v.toUpperCase())}
+            placeholder="ИМЯ Ф."
+          />
         </Field>
         {error && title.trim() && <Notice tone="warn" icon="warn">{error}</Notice>}
       </div>
