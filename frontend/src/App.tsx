@@ -21,6 +21,8 @@ export function App() {
     queryKey: ["bootstrap"],
     queryFn: fetchBootstrapData,
     retry: false,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
   });
   const createFundraisingMutation = useMutation({
     mutationFn: (payload: CreateFundraisingPayload) => createFundraising(payload),
