@@ -1673,7 +1673,7 @@ function CollectionScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
       <Card className="invoice-shortcut" onClick={() => ctx.nav.push("invoice")}><div className="row-between"><div className="row"><Icon name="wallet" /><div><small>{ctx.t("invoice")}</small><b>{money(ctx.data.myInvoice.total)}</b></div></div><Icon name="chevronR" /></div></Card>
       <SectionLabel>{ctx.t("approved")} · {approved.length}</SectionLabel><div className="listcard">{approved.map((item) => <ItemRow key={item.id} item={item} ctx={ctx} />)}</div>
       {proposed.length > 0 && <><SectionLabel>{ctx.t("proposed")} · {proposed.length}</SectionLabel><div className="listcard">{proposed.map((item) => <ItemRow key={item.id} item={item} ctx={ctx} proposed />)}</div></>}
-      {ctx.role === "organizer" && ctx.data.places.length > 0 && <VenuePickerSection ctx={ctx} />}
+      {ctx.role === "organizer" && ctx.data.places.length > 0 && editable && <VenuePickerSection ctx={ctx} />}
     </div>{editable && <BottomAction><div className="stack" style={{ gap: 9 }}>{ctx.role === "organizer" && <Btn full variant="secondary" icon="tag" onClick={() => ctx.nav.push("manage-categories")}>{ctx.t("manage_categories")}</Btn>}<Btn full icon="plus" onClick={() => ctx.nav.push("additem")}>{ctx.t("add_item")}</Btn></div></BottomAction>}</div>
   );
 }

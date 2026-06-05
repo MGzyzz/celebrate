@@ -174,7 +174,7 @@ class SetFundraisingPlaceView(views.APIView):
 
         try:
             place = PlaceIdea.objects.get(pk=place_id, event=event)
-        except PlaceIdea.DoesNotExist:
+        except (PlaceIdea.DoesNotExist, ValueError, TypeError):
             return response.Response({"detail": "Место не найдено."}, status=status.HTTP_404_NOT_FOUND)
 
         fundraising.items.filter(source_place__isnull=False).delete()
