@@ -47,6 +47,9 @@ def test_organizer_adds_place_creates_price_item(monkeypatch, organizer_user, fu
     client = _client(monkeypatch, organizer_user)
     resp = client.post(URL, {"place_id": place.pk}, format="json")
     assert resp.status_code == 201
+    assert resp.data["title"] == "Лофт Высота"
+    assert resp.data["unit_price"] == 220000
+    assert resp.data["status"] == PriceItem.Status.PROPOSED
     item = PriceItem.objects.get(source_place=place)
     assert item.title == "Лофт Высота"
     assert item.unit_price == 220000
@@ -79,6 +82,7 @@ def test_adding_second_place_replaces_first(monkeypatch, organizer_user, fundrai
     client = _client(monkeypatch, organizer_user)
     resp = client.post(URL, {"place_id": place.pk}, format="json")
     assert resp.status_code == 201
+    assert resp.data["title"] == "Лофт Высота"
     assert not PriceItem.objects.filter(pk=old_item.pk).exists()
     assert PriceItem.objects.filter(source_place=place).exists()
 
@@ -124,5 +128,6 @@ def test_place_with_zero_price_creates_item(monkeypatch, organizer_user, fundrai
     client = _client(monkeypatch, organizer_user)
     resp = client.post(URL, {"place_id": free_place.pk}, format="json")
     assert resp.status_code == 201
+    assert resp.data["unit_price"] == 0
     item = PriceItem.objects.get(source_place=free_place)
     assert item.unit_price == 0
