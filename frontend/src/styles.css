@@ -648,6 +648,12 @@ button.card {
   flex-shrink: 0;
 }
 
+.tag-assigned {
+  font-size: 11px;
+  color: var(--hint);
+  margin-left: 4px;
+}
+
 .lrow-sub {
   display: block;
   margin-top: 2px;

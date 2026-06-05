@@ -2558,6 +2558,10 @@ function ItemRow({ item, ctx, proposed }: { item: PriceItem; ctx: Ctx; proposed?
     <span className="badge-pin"><Icon name="pin" size={12} stroke={2.2} />{ctx.t("venue_badge")}</span>
   ) : null;
 
+  const assignedBadge = item.assigned_to ? (
+    <span className="tag-assigned">для {item.assigned_to}</span>
+  ) : null;
+
   const organizerTypes = [
     { key: "common", labelKey: "type_common", c: "blue" as StatusColor },
     { key: "alcohol", labelKey: "type_alcohol", c: "red" as StatusColor },
@@ -2638,7 +2642,7 @@ function ItemRow({ item, ctx, proposed }: { item: PriceItem; ctx: Ctx; proposed?
           {type && <span className="badge-dot" style={{ background: `var(--st-${type.c})`, width: 9, height: 9, flexShrink: 0 }} />}
           <div className="lrow-titles lrow-titles-inline">
             <span className="lrow-title">{item.name}</span>
-            {venueBadge}
+            {venueBadge}{assignedBadge}
           </div>
           <span className="lrow-amt num">{money(item.price * item.qty)}</span>
         </div>
@@ -2677,7 +2681,7 @@ function ItemRow({ item, ctx, proposed }: { item: PriceItem; ctx: Ctx; proposed?
       <div className="lrow-main">
         <div className="lrow-titles">
           <span className="lrow-title">{item.name}</span>
-          {venueBadge}
+          {venueBadge}{assignedBadge}
         </div>
         <span className="lrow-sub">{item.qty} {item.unit} · {item.by}</span>
       </div>
