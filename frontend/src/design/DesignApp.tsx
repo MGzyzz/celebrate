@@ -1271,8 +1271,8 @@ function MapMessage({ icon, title, text }: { icon: string; title: string; text: 
   return <div className="map-message"><Icon name={icon} size={28} /><b>{title}</b><span>{text}</span></div>;
 }
 
-function SuggestList({ items, onSelect, powered }: { items: YandexSuggestion[]; onSelect: (item: YandexSuggestion) => void; powered: string }) {
-  return <div className="suggest-list">{items.map((item, index) => <button key={suggestionKey(item, index)} className="suggest-item" onMouseDown={(event) => event.preventDefault()} onClick={() => onSelect(item)}><Icon name="pin" /><span><b>{item.title}</b><small>{item.subtitle}</small></span></button>)}<div className="suggest-powered"><Icon name="pin" size={12} />{powered}</div></div>;
+function SuggestList({ items, onSelect, powered, onDismiss }: { items: YandexSuggestion[]; onSelect: (item: YandexSuggestion) => void; powered: string; onDismiss?: () => void }) {
+  return <div className="suggest-list">{items.map((item, index) => <button key={suggestionKey(item, index)} className="suggest-item" onMouseDown={(event) => event.preventDefault()} onClick={() => onSelect(item)}><Icon name="pin" /><span><b>{item.title}</b><small>{item.subtitle}</small></span></button>)}{onDismiss && <button className="suggest-item suggest-dismiss" onMouseDown={(event) => event.preventDefault()} onClick={onDismiss}><Icon name="x" size={16} /><span><b>Написать своё название</b></span></button>}<div className="suggest-powered"><Icon name="pin" size={12} />{powered}</div></div>;
 }
 
 function SuggestEmpty({ text }: { text: string }) {
@@ -1509,7 +1509,7 @@ function AddPlaceScreen({ ctx }: { ctx: Ctx }) {
         </Field>
         <Field label={ctx.t("item_name")} error={errors.name}>
           <div className="suggest"><Input value={form.name} prefix={<Icon name="search" size={17} />} loading={nameSuggestLoading} onFocus={() => setFocusedSuggest("name")} onChange={(value) => { setForm((state) => ({ ...state, name: value, yandexUri: "", coords: null })); setErrors((state) => ({ ...state, name: null })); }} placeholder="Например, Dostyk Plaza" />
-            {focusedSuggest === "name" && nameSuggestions.length > 0 && <SuggestList items={nameSuggestions} onSelect={applyNameSuggestion} powered={ctx.t("powered_geosuggest")} />}
+            {focusedSuggest === "name" && nameSuggestions.length > 0 && <SuggestList items={nameSuggestions} onSelect={applyNameSuggestion} powered={ctx.t("powered_geosuggest")} onDismiss={() => setFocusedSuggest(null)} />}
             {focusedSuggest === "name" && !nameSuggestLoading && nameSuggestTouched && form.name.trim().length >= 2 && nameSuggestions.length === 0 && <SuggestEmpty text="Ничего не найдено. Проверьте ключ Yandex Suggest API или уточните запрос." />}
           </div>
         </Field>
