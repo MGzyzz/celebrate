@@ -182,7 +182,7 @@ class BootstrapView(APIView):
                 "yellow": "debate",
                 "red": "problem",
             }.get(place.interest_color, "new"),
-            "votes": place.votes_count,
+            "votes": getattr(place, "votes_count", 0),
             "supported": place.id in user_voted_ids,
             "address": place.address,
             "district": place.address,
@@ -199,6 +199,7 @@ class BootstrapView(APIView):
             "cons": [line for line in place.cons.splitlines() if line],
             "note": place.author_comment,
             "author": place.author.first_name if place.author else "",
+            "photo": place.photo_url or None,
         }
 
     @staticmethod

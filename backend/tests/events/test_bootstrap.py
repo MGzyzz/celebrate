@@ -139,3 +139,31 @@ def test_item_payload_source_place_id_none_when_not_set(fundraising, category):
     )
     payload = BootstrapView._item_payload(item)
     assert payload["source_place_id"] is None
+
+
+@pytest.mark.django_db
+def test_place_payload_includes_photo(group, event, organizer_user):
+    place = PlaceIdea.objects.create(
+        event=event,
+        author=organizer_user,
+        title="Фото место",
+        estimated_price=100000,
+        status=PlaceIdea.Status.PROPOSED,
+        photo_url="https://example.com/photo.jpg",
+    )
+    payload = BootstrapView._place_payload(place, 0, set())
+    assert payload["photo"] == "https://example.com/photo.jpg"
+
+
+@pytest.mark.django_db
+def test_place_payload_photo_none_when_empty(group, event, organizer_user):
+    place = PlaceIdea.objects.create(
+        event=event,
+        author=organizer_user,
+        title="Без фото",
+        estimated_price=100000,
+        status=PlaceIdea.Status.PROPOSED,
+        photo_url="",
+    )
+    payload = BootstrapView._place_payload(place, 0, set())
+    assert payload["photo"] is None
