@@ -1336,7 +1336,7 @@ function PlaceScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
   };
   return (
     <div className="scroll screen-anim">
-      {place.photo && <img className="hero-photo" src={place.photo} alt={place.name} />}
+      {place.photo ? <img className="hero-photo" src={place.photo} alt={place.name} /> : <div className="ph hero-photo" />}
       <div className="screen-pad stack">
         <div>
           <div className="row-between top-align"><h1 className="detail-title">{place.name}</h1><Badge color={interestColor[place.interest]}>{ctx.t(interestKeys[place.interest])}</Badge></div>
