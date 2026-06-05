@@ -60,6 +60,7 @@ class CurrentPlaceCreateView(views.APIView):
         if not address:
             return response.Response({"detail": "Укажите адрес места."}, status=status.HTTP_400_BAD_REQUEST)
         yandex_uri = str(request.data.get("yandexUri", "")).strip()
+        photo_url = str(request.data.get("photoUrl", "")).strip()
 
         try:
             estimated_price = int(request.data.get("estimatedPrice", 0) or 0)
@@ -119,6 +120,7 @@ class CurrentPlaceCreateView(views.APIView):
             description=str(request.data.get("description", "")).strip(),
             amenities=request.data.get("amenities", []),
             author_comment=str(request.data.get("authorComment", "")).strip(),
+            photo_url=photo_url,
             status=PlaceIdea.Status.PROPOSED,
             interest_color=PlaceIdea.InterestColor.BLUE,
         )

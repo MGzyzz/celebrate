@@ -65,3 +65,48 @@ def test_place_zero_price_rejected(monkeypatch, group, event):
     )
     assert resp.status_code == 400
     assert "стоимость" in resp.data["detail"].lower()
+
+
+@pytest.mark.django_db
+def test_place_photo_url_saved(monkeypatch, group, event):
+    from apps.places.models import PlaceIdea
+    user = TelegramUser.objects.create(telegram_id=7003, first_name="User3")
+    Membership.objects.create(user=user, group=group, role=Membership.Role.PARTICIPANT)
+    client = _client(monkeypatch, user)
+    resp = client.post(
+        URL,
+        {
+            "title": "Лофт с фото",
+            "address": "Алматы, Достык 5",
+            "estimatedPrice": 150000,
+            "latitude": "43.2",
+            "longitude": "76.9",
+            "photoUrl": "https://example.com/loft.jpg",
+        },
+        format="json",
+    )
+    assert resp.status_code == 201
+    place = PlaceIdea.objects.get(title="Лофт с фото")
+    assert place.photo_url == "https://example.com/loft.jpg"
+
+
+@pytest.mark.django_db
+def test_place_photo_url_optional(monkeypatch, group, event):
+    from apps.places.models import PlaceIdea
+    user = TelegramUser.objects.create(telegram_id=7004, first_name="User4")
+    Membership.objects.create(user=user, group=group, role=Membership.Role.PARTICIPANT)
+    client = _client(monkeypatch, user)
+    resp = client.post(
+        URL,
+        {
+            "title": "Лофт без фото",
+            "address": "Алматы, Достык 5",
+            "estimatedPrice": 150000,
+            "latitude": "43.2",
+            "longitude": "76.9",
+        },
+        format="json",
+    )
+    assert resp.status_code == 201
+    place = PlaceIdea.objects.get(title="Лофт без фото")
+    assert place.photo_url == ""
