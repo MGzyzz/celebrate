@@ -32,7 +32,9 @@ import {
   ShoppingCart,
   Star,
   Sun,
+  Tag,
   TriangleAlert,
+  Trash2,
   User,
   Users,
   Volume2,
@@ -412,6 +414,8 @@ type Ctx = {
   createCategory: (name: string) => Promise<unknown>;
   isCreatingCategory: boolean;
   deleteCategory: (id: string) => Promise<unknown>;
+  setPlace: (placeId: string) => Promise<unknown>;
+  isSettingPlace: boolean;
 };
 
 const ROOT: Record<Tab, ScreenName> = {
@@ -448,6 +452,8 @@ const itemType: Record<string, { k: string; c: StatusColor }> = {
   alcohol: { k: "type_alcohol", c: "red" },
   individual: { k: "type_individual", c: "amber" },
 };
+
+const categoryHues = [256, 18, 150, 200, 330, 285, 95, 40];
 
 const partLabel: Record<string, string> = {
   in: "f_in",
@@ -489,6 +495,8 @@ const iconMap = {
   moon: Moon,
   gear: Settings,
   info: Info,
+  tag: Tag,
+  trash: Trash2,
   arrowUR: ExternalLink,
   copy: Copy,
   lock: Lock,
@@ -544,6 +552,8 @@ type DesignAppProps = {
   onCreateCategory?: (name: string) => Promise<unknown>;
   isCreatingCategory?: boolean;
   onDeleteCategory?: (id: string) => Promise<unknown>;
+  onSetPlace?: (placeId: string) => Promise<unknown>;
+  isSettingPlace?: boolean;
 };
 
 export function DesignApp({
@@ -576,6 +586,8 @@ export function DesignApp({
   onCreateCategory,
   isCreatingCategory = false,
   onDeleteCategory,
+  onSetPlace = async () => undefined,
+  isSettingPlace = false,
 }: DesignAppProps) {
   const appData = initialData;
   const backendRole: Role = appData.me.role === "organizer" ? "organizer" : "participant";
@@ -694,6 +706,8 @@ export function DesignApp({
     createCategory: onCreateCategory ?? (() => Promise.resolve()),
     isCreatingCategory,
     deleteCategory: onDeleteCategory ?? (() => Promise.resolve()),
+    setPlace: onSetPlace,
+    isSettingPlace,
   };
 
   if (isError) {
@@ -786,7 +800,7 @@ function getTitle(current: StackEntry, ctx: Ctx): [string, string?] {
     case "profile":
       return [t("nav_profile")];
     case "eventsetup":
-      return [ctx.data.event?.id ? "Настройки события" : "Создать событие"];
+      return [ctx.data.event?.id ? ctx.t("event_settings") : ctx.t("create_event")];
     case "states":
       return [t("ui_states")];
     case "manage-categories":
@@ -1610,7 +1624,7 @@ function CollectionScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
       <Card className="invoice-shortcut" onClick={() => ctx.nav.push("invoice")}><div className="row-between"><div className="row"><Icon name="wallet" /><div><small>{ctx.t("invoice")}</small><b>{money(ctx.data.myInvoice.total)}</b></div></div><Icon name="chevronR" /></div></Card>
       <SectionLabel>{ctx.t("approved")} · {approved.length}</SectionLabel><div className="listcard">{approved.map((item) => <ItemRow key={item.id} item={item} ctx={ctx} />)}</div>
       {proposed.length > 0 && <><SectionLabel>{ctx.t("proposed")} · {proposed.length}</SectionLabel><div className="listcard">{proposed.map((item) => <ItemRow key={item.id} item={item} ctx={ctx} proposed />)}</div></>}
-    </div>{editable && <BottomAction><div className="stack" style={{ gap: 8 }}>{ctx.role === "organizer" && <Btn full variant="secondary" size="sm" onClick={() => ctx.nav.push("manage-categories")}>{ctx.t("manage_categories")}</Btn>}<Btn full icon="plus" onClick={() => ctx.nav.push("additem")}>{ctx.t("add_item")}</Btn></div></BottomAction>}</div>
+    </div>{editable && <BottomAction><div className="stack" style={{ gap: 9 }}>{ctx.role === "organizer" && <Btn full variant="secondary" icon="tag" onClick={() => ctx.nav.push("manage-categories")}>{ctx.t("manage_categories")}</Btn>}<Btn full icon="plus" onClick={() => ctx.nav.push("additem")}>{ctx.t("add_item")}</Btn></div></BottomAction>}</div>
   );
 }
 
@@ -1706,8 +1720,7 @@ function AddItemScreen({ ctx }: { ctx: Ctx }) {
             <div className="row"><Icon name="info" /><b>{ctx.t("dup_title")}</b></div>
             <p>«{duplicate.name}» {ctx.t("already_in_list")} — {duplicate.qty} {duplicate.unit} × {money(duplicate.price)}</p>
             <div className="row">
-              <Btn size="sm" variant="tinted" full onClick={() => { ctx.toast(ctx.t("dup_add_support"), "heart"); ctx.nav.pop(); }}>{ctx.t("dup_add_support")}</Btn>
-              <Btn size="sm" variant="secondary" onClick={() => setDismissed(true)}>{ctx.t("close")}</Btn>
+              <Btn size="sm" variant="secondary" full onClick={() => setDismissed(true)}>{ctx.t("close")}</Btn>
             </div>
           </div>
         )}
@@ -1759,28 +1772,52 @@ function AddItemScreen({ ctx }: { ctx: Ctx }) {
 function ManageCategoriesScreen({ ctx }: { ctx: Ctx }) {
   const [newName, setNewName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<AppData["categories"][number] | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const itemCountText = (count: number) => {
+    if (count <= 0) return ctx.t("cat_no_items");
+    if (ctx.lang === "kk") return `${count} тауар`;
+    const m10 = count % 10;
+    const m100 = count % 100;
+    const word = m10 === 1 && m100 !== 11
+      ? "товар"
+      : m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)
+        ? "товара"
+        : "товаров";
+    return `${count} ${word}`;
+  };
 
   const handleAdd = async () => {
     const name = newName.trim();
-    if (!name) return setError("Укажите название");
+    if (!name) return setError(ctx.t("cat_empty_name"));
+    if (ctx.data.categories.some((cat) => cat.name.toLowerCase() === name.toLowerCase())) {
+      return setError(ctx.t("cat_exists"));
+    }
     setError(null);
     try {
       await ctx.createCategory(name);
       setNewName("");
-      ctx.toast("Категория добавлена", "check");
+      ctx.toast(ctx.t("cat_added"), "check");
+      window.requestAnimationFrame(() => inputRef.current?.focus());
     } catch (err) {
       setError(getErrorText(err, "Не удалось добавить категорию"));
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async () => {
+    if (!pendingDelete) return;
+    const id = pendingDelete.id;
     setDeletingId(id);
+    setDeleteError(null);
     try {
       await ctx.deleteCategory(id);
-      ctx.toast("Категория удалена");
+      ctx.toast(ctx.t("cat_deleted"), "trash");
+      setPendingDelete(null);
     } catch (err) {
-      ctx.toast(getErrorText(err, "Нельзя удалить категорию с товарами"), "x");
+      setDeleteError(getErrorText(err, "Нельзя удалить категорию с товарами"));
     } finally {
       setDeletingId(null);
     }
@@ -1789,64 +1826,84 @@ function ManageCategoriesScreen({ ctx }: { ctx: Ctx }) {
   return (
     <div className="scroll screen-anim">
       <div className="screen-pad stack">
-        <Field label={ctx.t("category_add")} error={error}>
-          <div className="row" style={{ gap: 8 }}>
-            <Input
-              value={newName}
-              onChange={(v) => { setNewName(v); setError(null); }}
-              placeholder={ctx.t("category_placeholder")}
-            />
-            <Btn
-              size="sm"
-              variant="tinted"
-              disabled={ctx.isCreatingCategory || !newName.trim()}
-              onClick={handleAdd}
-            >
-              <Icon name="plus" size={18} />
-            </Btn>
-          </div>
-        </Field>
-        {ctx.data.categories.length === 0 ? (
-          <div style={{ color: "var(--hint)", textAlign: "center", padding: "24px 0", fontSize: 14 }}>
-            {ctx.t("category_empty")}
-          </div>
-        ) : (
-          <>
-            <div className="chip-row wrap" style={{ gap: 8 }}>
-              {ctx.data.categories.map((cat) => {
-                const hasItems = cat.itemCount > 0;
-                return (
-                  <div
-                    key={cat.id}
-                    className="chip"
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingRight: 6, opacity: deletingId === cat.id ? 0.5 : 1 }}
-                    title={hasItems ? `${cat.itemCount} товар(ов) — сначала удалите товары` : undefined}
-                  >
-                    <span>{cat.name}</span>
-                    {hasItems
-                      ? <span style={{ fontSize: 11, color: "var(--hint)", fontWeight: 600 }}>{cat.itemCount}</span>
-                      : (
-                        <button
-                          style={{ display: "flex", alignItems: "center", background: "none", border: "none", cursor: "pointer", color: "var(--hint)", padding: 0 }}
-                          disabled={deletingId === cat.id}
-                          onClick={() => handleDelete(cat.id)}
-                        >
-                          <Icon name="x" size={14} />
-                        </button>
-                      )
-                    }
-                  </div>
-                );
-              })}
+        <Notice tone="info" icon="info">{ctx.t("cat_hint")}</Notice>
+
+        <SectionLabel>{ctx.t("category_add")}</SectionLabel>
+        <div>
+          <div className="cat-add">
+            <div className={`input-wrap${error ? " input-error" : ""}`} style={{ flex: 1 }}>
+              <input
+                ref={inputRef}
+                className="input"
+                value={newName}
+                onChange={(event) => { setNewName(event.target.value); setError(null); }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleAdd();
+                  }
+                }}
+                placeholder={ctx.t("category_name_ph")}
+              />
             </div>
-            {ctx.data.categories.some((c) => c.itemCount > 0) && (
-              <p style={{ fontSize: 12.5, color: "var(--hint)", margin: 0 }}>
-                Категории с товарами нельзя удалить — сначала удалите товары из сбора.
-              </p>
-            )}
-          </>
+            <button
+              className={`cat-add-btn${newName.trim() ? " cat-add-btn-on" : ""}${ctx.isCreatingCategory ? " cat-add-btn-disabled" : ""}`}
+              disabled={ctx.isCreatingCategory}
+              onClick={handleAdd}
+              aria-label={ctx.t("category_add")}
+            >
+              <Icon name="plus" size={23} stroke={2.3} />
+            </button>
+          </div>
+          {error && <div className="field-error cat-error"><Icon name="warn" size={13} stroke={2} />{error}</div>}
+        </div>
+
+        <SectionLabel>{ctx.t("all_categories")} · {ctx.data.categories.length}</SectionLabel>
+        {ctx.data.categories.length === 0 ? (
+          <StateView icon="tag" title={ctx.t("cat_none_title")} sub={ctx.t("cat_none_sub")} />
+        ) : (
+          <div className="listcard">
+            {ctx.data.categories.map((cat, index) => {
+              const itemCount = Number(cat.itemCount ?? 0);
+              const hue = categoryHues[index % categoryHues.length];
+              return (
+                <div className="lrow lrow-static" key={cat.id} style={{ opacity: deletingId === cat.id ? 0.55 : 1 }}>
+                  <span className="cat-dot" style={{ background: `oklch(0.64 0.15 ${hue})` }} />
+                  <div className="lrow-main">
+                    <div className="lrow-title">{cat.name}</div>
+                    <div className="lrow-sub">{itemCountText(itemCount)}</div>
+                  </div>
+                  <button
+                    className="cat-del"
+                    disabled={deletingId === cat.id}
+                    onClick={() => { setPendingDelete(cat); setDeleteError(null); }}
+                    aria-label={ctx.t("cat_delete_q")}
+                  >
+                    <Icon name="trash" size={18} stroke={1.9} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
+      <Modal
+        open={Boolean(pendingDelete)}
+        onClose={() => { setPendingDelete(null); setDeleteError(null); }}
+        title={pendingDelete ? `${ctx.t("cat_delete_q")} «${pendingDelete.name}»` : ""}
+        danger
+      >
+        <div className="gap12">
+          <p className="modal-text">{ctx.t("cat_delete_body")}</p>
+          {deleteError && <Notice tone="warn" icon="warn">{deleteError}</Notice>}
+          <div className="row" style={{ gap: 8 }}>
+            <Btn full variant="secondary" onClick={() => { setPendingDelete(null); setDeleteError(null); }}>{ctx.t("cancel")}</Btn>
+            <Btn full variant="danger" disabled={Boolean(deletingId)} onClick={handleDelete}>
+              {deletingId ? ctx.t("loading") : ctx.t("delete")}
+            </Btn>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -1967,16 +2024,16 @@ function ParticipantsScreen({ ctx }: { ctx: Ctx }) {
   };
   const list = ctx.participants.filter((p) => filter === "all" || (filter === "paid" ? p.paid : filter === "unpaid" ? !p.paid && p.participation === "in" && p.payCat !== "exempt" : filter === "out" ? (p.participation === "out" || p.payCat === "exempt") : filter === "in" ? p.participation === "in" && p.payCat !== "exempt" : p.participation === filter));
   if (!isOrg) {
-    return <div className="scroll screen-anim"><div className="screen-pad gap12"><div className="row"><MiniStat n={counts.in} label={ctx.t("f_in")} c="green" /><MiniStat n={counts.maybe} label={ctx.t("f_maybe")} c="amber" /><MiniStat n={counts.none} label={ctx.t("f_none")} c="gray" /></div><Notice tone="info" icon="info">Суммы и счета видит только организатор</Notice><ParticipantList participants={ctx.participants} ctx={ctx} publicOnly /></div></div>;
+    return <div className="scroll screen-anim"><div className="screen-pad gap12"><div className="row"><MiniStat n={counts.in} label={ctx.t("f_in")} c="green" /><MiniStat n={counts.maybe} label={ctx.t("f_maybe")} c="amber" /><MiniStat n={counts.none} label={ctx.t("f_none")} c="gray" /></div><Notice tone="info" icon="info">{ctx.t("participant_amounts_private")}</Notice><ParticipantList participants={ctx.participants} ctx={ctx} publicOnly /></div></div>;
   }
   const filters = ["all", "in", "maybe", "none", "out", "paid", "unpaid"];
   const labels: Record<string, string> = { all: ctx.t("all"), in: ctx.t("f_in"), maybe: ctx.t("f_maybe"), none: ctx.t("f_none"), out: ctx.t("f_out"), paid: ctx.t("f_paid"), unpaid: ctx.t("f_unpaid") };
   const canFinalize = hasCollection && counts.in > 0;
   const finalizeHint = !hasCollection
-    ? "Сначала создайте сбор. После этого здесь появится финальный расчет."
+    ? ctx.t("finalize_hint_create_collection")
     : counts.in === 0
-      ? "Счета можно отправить только тем, кто подтвердил участие."
-      : "Финальный расчет создаст счета только для участников со статусом «Участвует».";
+      ? ctx.t("finalize_hint_no_participants")
+      : ctx.t("finalize_hint_ready");
 
   return (
     <div className="scroll screen-anim">
@@ -1986,10 +2043,10 @@ function ParticipantsScreen({ ctx }: { ctx: Ctx }) {
         {hasParticipants ? (
           <>
             <div className="chip-row">{filters.map((f) => <Chip key={f} active={filter === f} onClick={() => setFilter(f)}>{labels[f]}</Chip>)}</div>
-            {list.length ? <ParticipantList participants={list} ctx={ctx} /> : <StateView icon="users" title="Нет участников" sub="По этому фильтру никого нет." />}
+            {list.length ? <ParticipantList participants={list} ctx={ctx} /> : <StateView icon="users" title={ctx.t("no_participants")} sub={ctx.t("empty_participants_filter")} />}
           </>
         ) : (
-          <StateView icon="users" title="Участников пока нет" sub="Они появятся здесь после первого входа в Mini App или после добавления через админку." />
+          <StateView icon="users" title={ctx.t("participants_empty_title")} sub={ctx.t("participants_empty_sub")} />
         )}
       </div>
       <BottomAction><Btn full icon="wallet" disabled={!canFinalize} onClick={() => ctx.nav.push("finalize")}>{ctx.t("final_calc")}</Btn></BottomAction>
@@ -2144,11 +2201,11 @@ function ProfileScreen({ ctx }: { ctx: Ctx }) {
         <div className="listcard"><div className="lrow"><Icon name={ctx.role === "organizer" ? "lock" : "user"} /><span className="lrow-main">{ctx.t(ctx.role === "organizer" ? "role_organizer" : "role_participant")}</span><Badge color={ctx.role === "organizer" ? "green" : "blue"}>{ctx.t(ctx.role === "organizer" ? "role_organizer" : "role_participant")}</Badge></div></div>
         {ctx.role === "organizer" && (
           <>
-            <SectionLabel>Событие</SectionLabel>
+            <SectionLabel>{ctx.t("event_section")}</SectionLabel>
             <div className="listcard">
               <button className="lrow" onClick={() => ctx.nav.push("eventsetup")}>
                 <Icon name="calendar" />
-                <span className="lrow-main">Настройки события</span>
+                <span className="lrow-main">{ctx.t("event_settings")}</span>
                 <Icon name="chevronR" />
               </button>
             </div>
@@ -2161,7 +2218,7 @@ function ProfileScreen({ ctx }: { ctx: Ctx }) {
         <SectionLabel>{ctx.t("settings")}</SectionLabel>
         <div className="listcard">
           <button className="lrow" onClick={() => ctx.setNotif(!ctx.notif)}><Icon name="bell" /><span className="lrow-main">{ctx.t("notifications")}</span><Toggle on={ctx.notif} /></button>
-          <button className="lrow" onClick={ctx.replayOnboarding}><Icon name="star" /><span className="lrow-main">Показать onboarding</span><Icon name="chevronR" /></button>
+          <button className="lrow" onClick={ctx.replayOnboarding}><Icon name="star" /><span className="lrow-main">{ctx.t("show_onboarding")}</span><Icon name="chevronR" /></button>
         </div>
         <p className="hint center-text">Версия {__APP_VERSION__}</p>
       </div>
@@ -2212,7 +2269,7 @@ function EventSetupScreen({ ctx, mode }: { ctx: Ctx; mode: "create" | "edit" }) 
           paymentPhone: optionalText(paymentPhone),
           paymentHolder: optionalText(paymentHolder),
         });
-        ctx.toast("Событие создано", "check");
+        ctx.toast(ctx.t("event_created"), "check");
       } else {
         await ctx.updateEvent({
           title: title.trim(),
@@ -2306,7 +2363,7 @@ function StatesScreen({ ctx }: { ctx: Ctx }) {
   return <div className="scroll screen-anim"><div className="screen-pad gap12"><Segmented value={view} options={[["loading", "Loading"], ["empty", "Empty"], ["error", "Error"], ["map", ctx.t("map_state")]]} onChange={setView} />{view === "loading" && [0, 1, 2].map((i) => <Card key={i}><Skeleton h={16} w="55%" /><Skeleton h={12} /><Skeleton h={22} w="70%" /></Card>)}{view === "empty" && <StateView icon="cart" title={ctx.t("empty_title")} sub={ctx.t("empty_collections")} action={<Btn full icon="plus">{ctx.t("create_collection")}</Btn>} />}{view === "error" && <StateView icon="warn" title={ctx.t("error_title")} sub={ctx.t("error_sub")} action={<Btn full variant="secondary">{ctx.t("retry")}</Btn>} />}{view === "map" && <div className="map-state"><MapLoading t={ctx.t} /></div>}</div></div>;
 }
 
-function Btn({ children, variant = "primary", icon, onClick, full, size = "md", disabled, style }: { children?: ReactNode; variant?: "primary" | "secondary" | "tinted" | "ghost"; icon?: string; onClick?: () => void; full?: boolean; size?: "sm" | "md"; disabled?: boolean; style?: React.CSSProperties }) {
+function Btn({ children, variant = "primary", icon, onClick, full, size = "md", disabled, style }: { children?: ReactNode; variant?: "primary" | "secondary" | "tinted" | "ghost" | "danger"; icon?: string; onClick?: () => void; full?: boolean; size?: "sm" | "md"; disabled?: boolean; style?: React.CSSProperties }) {
   return <button className={`btn btn-${variant} btn-${size}${full ? " btn-full" : ""}${disabled ? " btn-disabled" : ""}`} style={style} onClick={disabled ? undefined : onClick}>{icon && <Icon name={icon} size={size === "sm" ? 17 : 19} stroke={2} />}{children && <span>{children}</span>}</button>;
 }
 

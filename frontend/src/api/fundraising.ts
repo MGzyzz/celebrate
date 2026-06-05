@@ -57,3 +57,10 @@ export async function createCategory(name: string): Promise<{ id: string; name: 
 export async function deleteCategory(id: string): Promise<void> {
   await apiRequest(`/fundraising/categories/${id}/`, { method: "DELETE" });
 }
+
+export async function setFundraisingPlace(placeId: string): Promise<unknown> {
+  return apiRequest("/fundraisings/current/set-place/", {
+    method: "POST",
+    body: JSON.stringify({ place_id: placeId }),
+  });
+}
