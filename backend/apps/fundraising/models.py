@@ -84,6 +84,13 @@ class PriceItem(models.Model):
         on_delete=models.SET_NULL,
         related_name="price_items",
     )
+    assigned_to = models.ForeignKey(
+        "accounts.TelegramUser",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="assigned_items",
+    )
     title = models.CharField(max_length=255)
     normalized_title = models.CharField(max_length=255, db_index=True)
     quantity = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)])
