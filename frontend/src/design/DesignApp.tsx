@@ -1593,6 +1593,55 @@ function CreateCollectionScreen({ ctx }: { ctx: Ctx }) {
   );
 }
 
+function VenuePickerSection({ ctx }: { ctx: Ctx }) {
+  const [loading, setLoading] = useState<string | null>(null);
+  const sortedPlaces = [...ctx.data.places].sort((a, b) => b.votes - a.votes);
+  const venueItem = ctx.data.items.find((item) => item.source_place_id != null);
+
+  const handleAdd = async (placeId: string) => {
+    setLoading(placeId);
+    try {
+      await ctx.setPlace(placeId);
+      ctx.toast("Место добавлено в сбор");
+    } catch {
+      ctx.toast("Не удалось добавить место");
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  return (
+    <>
+      <SectionLabel>Место проведения</SectionLabel>
+      <div className="listcard">
+        {sortedPlaces.map((place) => {
+          const isAdded = venueItem?.source_place_id === place.id;
+          const isLoading = loading === place.id;
+          return (
+            <div key={place.id} className="row-between" style={{ padding: "10px 14px", gap: 8 }}>
+              <div className="stack" style={{ gap: 2, flex: 1, minWidth: 0 }}>
+                <span style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{place.name}</span>
+                <span className="muted" style={{ fontSize: 12 }}>{money(place.price)} · {place.votes} голосов</span>
+              </div>
+              {isAdded ? (
+                <Badge color="green">Добавлено</Badge>
+              ) : (
+                <Btn
+                  variant="secondary"
+                  onClick={() => handleAdd(place.id)}
+                  disabled={isLoading || ctx.isSettingPlace}
+                >
+                  {isLoading ? "..." : "В сбор"}
+                </Btn>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 function CollectionScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
   const collection = ctx.data.collections.find((item) => item.id === id) ?? ctx.data.collections[0];
   if (!collection) {
@@ -1624,6 +1673,7 @@ function CollectionScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
       <Card className="invoice-shortcut" onClick={() => ctx.nav.push("invoice")}><div className="row-between"><div className="row"><Icon name="wallet" /><div><small>{ctx.t("invoice")}</small><b>{money(ctx.data.myInvoice.total)}</b></div></div><Icon name="chevronR" /></div></Card>
       <SectionLabel>{ctx.t("approved")} · {approved.length}</SectionLabel><div className="listcard">{approved.map((item) => <ItemRow key={item.id} item={item} ctx={ctx} />)}</div>
       {proposed.length > 0 && <><SectionLabel>{ctx.t("proposed")} · {proposed.length}</SectionLabel><div className="listcard">{proposed.map((item) => <ItemRow key={item.id} item={item} ctx={ctx} proposed />)}</div></>}
+      {ctx.role === "organizer" && ctx.data.places.length > 0 && <VenuePickerSection ctx={ctx} />}
     </div>{editable && <BottomAction><div className="stack" style={{ gap: 9 }}>{ctx.role === "organizer" && <Btn full variant="secondary" icon="tag" onClick={() => ctx.nav.push("manage-categories")}>{ctx.t("manage_categories")}</Btn>}<Btn full icon="plus" onClick={() => ctx.nav.push("additem")}>{ctx.t("add_item")}</Btn></div></BottomAction>}</div>
   );
 }
