@@ -1689,7 +1689,7 @@ function CollectionScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
   const status = collectionStatus[collection.status];
   const editable = collection.status === "active" || collection.status === "draft";
   return (
-    <div className="scroll screen-anim"><div className="screen-pad stack">
+    <div className="scroll screen-anim" style={{ display: "flex", flexDirection: "column" }}><div className="screen-pad stack" style={{ flex: 1 }}>
       <div className="row-between"><Badge color={status.c}>{ctx.t(status.k)}</Badge><span className="muted row"><Icon name="clock" size={15} />{ctx.daysLeft(collection.deadline)} {ctx.t("days_left")}</span></div>
       <Card><BudgetProgress collected={collection.collected} planned={collection.planned} approved={collection.approved} t={ctx.t} /></Card>
       <SectionLabel>Смета товаров</SectionLabel>

@@ -125,9 +125,9 @@ def webhook(request):
         if mini_app_url:
             _send_message(
                 chat_id,
-                "Привет! 👋 Открой приложение для планирования выпускного:",
+                "Привет! Открой приложение для планирования выпускного:",
                 reply_markup={"inline_keyboard": [[
-                    {"text": "🎓 Открыть приложение", "web_app": {"url": mini_app_url}},
+                    {"text": "Открыть приложение", "web_app": {"url": mini_app_url}},
                 ]]},
             )
         else:
