@@ -2139,8 +2139,8 @@ function ParticipantsScreen({ ctx }: { ctx: Ctx }) {
       : ctx.t("finalize_hint_ready");
 
   return (
-    <div className="scroll screen-anim">
-      <div className="screen-pad gap12">
+    <div className="scroll screen-anim" style={{ display: "flex", flexDirection: "column" }}>
+      <div className="screen-pad gap12" style={{ flex: 1 }}>
         <div className="row"><MiniStat n={counts.in} label={ctx.t("f_in")} c="green" /><MiniStat n={counts.maybe} label={ctx.t("f_maybe")} c="amber" /><MiniStat n={counts.none} label={ctx.t("f_none")} c="gray" /><MiniStat n={counts.out} label={ctx.t("f_out")} c="red" /></div>
         <Notice tone={canFinalize ? "info" : "warn"} icon={canFinalize ? "info" : "warn"}>{finalizeHint}</Notice>
         {hasParticipants ? (
