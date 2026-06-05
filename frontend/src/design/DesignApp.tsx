@@ -1336,7 +1336,7 @@ function PlaceScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
   };
   return (
     <div className="scroll screen-anim">
-      <div className="ph hero-photo">фото / галерея места</div>
+      {place.photo && <img className="hero-photo" src={place.photo} alt={place.name} />}
       <div className="screen-pad stack">
         <div>
           <div className="row-between top-align"><h1 className="detail-title">{place.name}</h1><Badge color={interestColor[place.interest]}>{ctx.t(interestKeys[place.interest])}</Badge></div>
@@ -2530,7 +2530,7 @@ function Chip({ children, active, onClick, color, icon }: { children: ReactNode;
 }
 
 function PlaceListCard({ place, ctx, compact }: { place: Place; ctx: Ctx; compact?: boolean }) {
-  return <Card className="place-card" onClick={() => ctx.nav.push("place", { id: place.id })}><div className="ph place-photo">фото</div><div className="place-main"><b>{place.name}</b><small>{place.district}</small><div className="row-between"><Badge color={interestColor[place.interest]}>{ctx.t(interestKeys[place.interest])}</Badge>{!compact && <span className="num">{money(place.price)}</span>}</div></div></Card>;
+  return <Card className="place-card" onClick={() => ctx.nav.push("place", { id: place.id })}>{place.photo && <img className="place-photo" src={place.photo} alt={place.name} />}<div className="place-main"><b>{place.name}</b><small>{place.district}</small><div className="row-between"><Badge color={interestColor[place.interest]}>{ctx.t(interestKeys[place.interest])}</Badge>{!compact && <span className="num">{money(place.price)}</span>}</div></div></Card>;
 }
 
 function MapSheet({ place, ctx, onClose }: { place: Place; ctx: Ctx; onClose: () => void }) {

@@ -1730,6 +1730,12 @@ button.card {
   flex-shrink: 0;
 }
 
+img.place-photo {
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .place-main {
   display: grid;
   flex: 1;
@@ -1758,6 +1764,12 @@ button.card {
 .hero-photo {
   height: 200px;
   border-radius: 0;
+}
+
+img.hero-photo {
+  width: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .add-photo {
