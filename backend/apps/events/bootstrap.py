@@ -229,7 +229,7 @@ class BootstrapView(APIView):
     def _items(fundraising):
         if not fundraising:
             return []
-        return fundraising.items.select_related("category", "author").prefetch_related("supports").order_by("-created_at")
+        return fundraising.items.select_related("category", "author", "source_place").prefetch_related("supports").order_by("-created_at")
 
     @staticmethod
     def _item_payload(item):
@@ -252,6 +252,7 @@ class BootstrapView(APIView):
             "approved": item.status == PriceItem.Status.APPROVED,
             "by": item.author.first_name if item.author else "",
             "support": item.supports.count(),
+            "source_place_id": str(item.source_place_id) if item.source_place_id else None,
         }
 
     @staticmethod
@@ -292,3 +293,7 @@ class BootstrapView(APIView):
             "paid": invoice.status == Invoice.Status.PAID,
             "individualItems": [],
         }
+
+
+# Alias used by tests and external callers
+BootstrapBuilder = BootstrapView

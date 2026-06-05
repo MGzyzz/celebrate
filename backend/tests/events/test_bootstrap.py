@@ -101,3 +101,47 @@ def test_me_payload_maps_existing_backend_status(group, event):
     payload = BootstrapView._me_payload(user, event)
 
     assert payload["participation"] == "maybe"
+
+
+@pytest.mark.django_db
+def test_item_payload_includes_source_place_id(group, event, fundraising, category, organizer_user):
+    from apps.places.models import PlaceIdea
+    place = PlaceIdea.objects.create(
+        event=event,
+        title="Test Place",
+        estimated_price=100000,
+        status=PlaceIdea.Status.PROPOSED,
+    )
+    from apps.fundraising.models import PriceItem
+    item = PriceItem.objects.create(
+        fundraising=fundraising,
+        category=category,
+        title="Test Place",
+        quantity=1,
+        unit="аренда",
+        unit_price=100000,
+        item_type=PriceItem.ItemType.COMMON,
+        status=PriceItem.Status.PROPOSED,
+        source_place=place,
+    )
+    from apps.events.bootstrap import BootstrapBuilder
+    payload = BootstrapBuilder._item_payload(item)
+    assert payload["source_place_id"] == str(place.pk)
+
+
+@pytest.mark.django_db
+def test_item_payload_source_place_id_none_when_not_set(fundraising, category, organizer_user):
+    from apps.fundraising.models import PriceItem
+    item = PriceItem.objects.create(
+        fundraising=fundraising,
+        category=category,
+        title="Regular Item",
+        quantity=1,
+        unit="шт",
+        unit_price=5000,
+        item_type=PriceItem.ItemType.COMMON,
+        status=PriceItem.Status.PROPOSED,
+    )
+    from apps.events.bootstrap import BootstrapBuilder
+    payload = BootstrapBuilder._item_payload(item)
+    assert payload["source_place_id"] is None
