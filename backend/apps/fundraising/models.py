@@ -77,6 +77,13 @@ class PriceItem(models.Model):
     author = models.ForeignKey(TelegramUser, on_delete=models.SET_NULL, null=True, blank=True)
     category = models.ForeignKey(ItemCategory, on_delete=models.PROTECT, related_name="items")
     duplicate_of = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="duplicates")
+    source_place = models.ForeignKey(
+        "places.PlaceIdea",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="price_items",
+    )
     title = models.CharField(max_length=255)
     normalized_title = models.CharField(max_length=255, db_index=True)
     quantity = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)])
