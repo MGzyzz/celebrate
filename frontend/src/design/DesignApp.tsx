@@ -414,6 +414,7 @@ type Ctx = {
   createCategory: (name: string) => Promise<unknown>;
   isCreatingCategory: boolean;
   deleteCategory: (id: string) => Promise<unknown>;
+  deleteItem: (id: string) => Promise<unknown>;
   setPlace: (placeId: string) => Promise<unknown>;
   isSettingPlace: boolean;
 };
@@ -552,6 +553,7 @@ type DesignAppProps = {
   onCreateCategory?: (name: string) => Promise<unknown>;
   isCreatingCategory?: boolean;
   onDeleteCategory?: (id: string) => Promise<unknown>;
+  onDeleteItem?: (id: string) => Promise<unknown>;
   onSetPlace?: (placeId: string) => Promise<unknown>;
   isSettingPlace?: boolean;
 };
@@ -586,6 +588,7 @@ export function DesignApp({
   onCreateCategory,
   isCreatingCategory = false,
   onDeleteCategory,
+  onDeleteItem,
   onSetPlace = async () => undefined,
   isSettingPlace = false,
 }: DesignAppProps) {
@@ -706,6 +709,7 @@ export function DesignApp({
     createCategory: onCreateCategory ?? (() => Promise.resolve()),
     isCreatingCategory,
     deleteCategory: onDeleteCategory ?? (() => Promise.resolve()),
+    deleteItem: onDeleteItem ?? (() => Promise.resolve()),
     setPlace: onSetPlace,
     isSettingPlace,
   };
@@ -749,9 +753,11 @@ export function DesignApp({
               onBack={isRoot ? undefined : navApi.pop}
               right={
                 isRoot && nav.tab === "home" ? (
-                  <span className="pill-info" onClick={() => navApi.setTab("profile")}>
-                    {role === "organizer" ? t("role_organizer") : t("role_participant")}
-                  </span>
+                  isLoading
+                    ? <span className="pill-info pill-info-loading" />
+                    : <span className="pill-info" onClick={() => navApi.setTab("profile")}>
+                        {role === "organizer" ? t("role_organizer") : t("role_participant")}
+                      </span>
                 ) : undefined
               }
             />
@@ -1461,6 +1467,7 @@ function AddPlaceScreen({ ctx }: { ctx: Ctx }) {
     const nextErrors: Record<string, string> = {};
     if (!form.name.trim()) nextErrors.name = "Укажите название";
     if (!form.address.trim()) nextErrors.address = "Укажите адрес";
+    if (!Number(form.price || 0)) nextErrors.price = ctx.t("price_required");
     if (Object.keys(nextErrors).length) return setErrors(nextErrors);
     setResolvingPlace(true);
     try {
@@ -1506,7 +1513,7 @@ function AddPlaceScreen({ ctx }: { ctx: Ctx }) {
           </div>
         </Field>
         {form.coords && <div className="coords"><Icon name="pin" /><div className="spread"><small>{ctx.t("coords_label")}</small><b>{form.coords.lat.toFixed(5)}, {form.coords.lng.toFixed(5)}</b></div><button className="topbar-btn" onClick={() => set("coords", null)}><Icon name="x" size={17} /></button></div>}
-        <div className="row"><Field label={ctx.t("price_approx")}><Input value={formatDigits(form.price)} onChange={(value) => set("price", onlyDigits(value))} placeholder="0" suffix="тг" /></Field><Field label={ctx.t("capacity")}><Input value={formatDigits(form.capacity)} onChange={(value) => set("capacity", onlyDigits(value))} placeholder="0" suffix={ctx.t("people")} /></Field></div>
+        <div className="row" style={{ alignItems: "flex-start" }}><Field label={ctx.t("price_approx")} error={errors.price}><Input value={formatDigits(form.price)} onChange={(value) => { set("price", onlyDigits(value)); setErrors((state) => ({ ...state, price: null })); }} placeholder="0" suffix="тг" /></Field><Field label={ctx.t("capacity")}><Input value={formatDigits(form.capacity)} onChange={(value) => set("capacity", onlyDigits(value))} placeholder="0" suffix={ctx.t("people")} /></Field></div>
         <Field label={ctx.t("whats_there")}><div className="chip-row wrap">{amenityList.map((amenity) => <Chip key={amenity} active={form.amen.includes(amenity)} icon={amenity} onClick={() => setForm((state) => ({ ...state, amen: state.amen.includes(amenity) ? state.amen.filter((item) => item !== amenity) : [...state.amen, amenity] }))}>{ctx.t(`am_${amenity}`)}</Chip>)}</div></Field>
         <Field label={ctx.t("description")}><textarea className="input textarea" value={form.desc} onChange={(event) => set("desc", event.target.value)} placeholder="Чем место хорошо, какие условия..." /></Field>
         <Field label={ctx.t("author_note")} optional={ctx.t("optional")}><Input value={form.note} onChange={(value) => set("note", value)} placeholder="Ваш комментарий" /></Field>
@@ -1599,12 +1606,13 @@ function VenuePickerSection({ ctx }: { ctx: Ctx }) {
   const venueItem = ctx.data.items.find((item) => item.source_place_id != null);
 
   const handleAdd = async (placeId: string) => {
+    if (loading || ctx.isSettingPlace) return;
     setLoading(placeId);
     try {
       await ctx.setPlace(placeId);
-      ctx.toast("Место добавлено в сбор");
-    } catch {
-      ctx.toast("Не удалось добавить место");
+      ctx.toast(ctx.t("venue_add_success"), "check");
+    } catch (err) {
+      ctx.toast(getErrorText(err, ctx.t("venue_add_error")), "x");
     } finally {
       setLoading(null);
     }
@@ -1612,27 +1620,41 @@ function VenuePickerSection({ ctx }: { ctx: Ctx }) {
 
   return (
     <>
-      <SectionLabel>Место проведения</SectionLabel>
+      <SectionLabel action={<span className="section-label-sub">{ctx.t("venue_by_votes")}</span>}>
+        {ctx.t("venue_section")}
+      </SectionLabel>
+      <Notice tone="info" icon="info">{ctx.t("venue_hint")}</Notice>
       <div className="listcard">
         {sortedPlaces.map((place) => {
           const isAdded = venueItem?.source_place_id === place.id;
           const isLoading = loading === place.id;
+          const isDisabled = Boolean(loading) || ctx.isSettingPlace;
           return (
-            <div key={place.id} className="row-between" style={{ padding: "10px 14px", gap: 8 }}>
-              <div className="stack" style={{ gap: 2, flex: 1, minWidth: 0 }}>
-                <span style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{place.name}</span>
-                <span className="muted" style={{ fontSize: 12 }}>{money(place.price)} · {place.votes} голосов</span>
+            <div key={place.id} className={`venue-row${isAdded ? " venue-row-on" : ""}`}>
+              <div className="venue-main">
+                <span className="venue-name">{place.name}</span>
+                <span className="venue-meta">
+                  <span className="venue-price">{money(place.price)}</span>
+                  <span className="venue-votes"><Icon name="heart" size={13} stroke={2.2} />{place.votes}</span>
+                </span>
               </div>
-              {isAdded ? (
-                <Badge color="green">Добавлено</Badge>
+              {isLoading ? (
+                <button className="btn btn-tinted btn-sm venue-btn venue-btn-loading" type="button" disabled>
+                  <span className="spinner" />
+                  <span>{ctx.t("venue_adding")}</span>
+                </button>
+              ) : isAdded ? (
+                <span className="venue-added"><Icon name="check" size={15} stroke={2.6} />{ctx.t("venue_added")}</span>
               ) : (
-                <Btn
-                  variant="secondary"
+                <button
+                  className="btn btn-tinted btn-sm venue-btn"
+                  type="button"
+                  disabled={isDisabled}
                   onClick={() => handleAdd(place.id)}
-                  disabled={isLoading || ctx.isSettingPlace}
                 >
-                  {isLoading ? "..." : "В сбор"}
-                </Btn>
+                  <Icon name="plus" size={17} stroke={2.1} />
+                  <span>{ctx.t("venue_add")}</span>
+                </button>
               )}
             </div>
           );
@@ -1692,6 +1714,12 @@ function AddItemScreen({ ctx }: { ctx: Ctx }) {
   });
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (categories.length > 0 && !categories.some((c) => c.name === form.cat)) {
+      setForm((state) => ({ ...state, cat: categories[0].name }));
+    }
+  }, [categories]);
   const query = form.name.trim().toLowerCase();
   const duplicate =
     query.length >= 2 && !dismissed
@@ -1746,9 +1774,20 @@ function AddItemScreen({ ctx }: { ctx: Ctx }) {
     return (
       <div className="scroll screen-anim">
         <div className="screen-pad stack">
-          <Notice tone="info" icon="info">
-            Организатор ещё не создал категории. Попросите организатора добавить их в настройках сбора.
-          </Notice>
+          {ctx.role === "organizer" ? (
+            <>
+              <Notice tone="info" icon="info">
+                Сначала создайте хотя бы одну категорию — например, «Еда» или «Декор».
+              </Notice>
+              <Btn full icon="tag" onClick={() => ctx.nav.push("manage-categories")}>
+                {ctx.t("manage_categories")}
+              </Btn>
+            </>
+          ) : (
+            <Notice tone="info" icon="info">
+              Организатор ещё не создал категории. Попросите организатора добавить их в настройках сбора.
+            </Notice>
+          )}
         </div>
       </div>
     );
@@ -1774,7 +1813,14 @@ function AddItemScreen({ ctx }: { ctx: Ctx }) {
             </div>
           </div>
         )}
-        <Field label={ctx.t("category")}>
+        <Field
+          label={ctx.t("category")}
+          action={ctx.role === "organizer" && (
+            <button className="field-add-btn" type="button" onClick={() => ctx.nav.push("manage-categories")} title={ctx.t("manage_categories")}>
+              <Icon name="plus" size={15} stroke={2.4} />
+            </button>
+          )}
+        >
           <div className="chip-row wrap">
             {categories.map((cat) => (
               <Chip key={cat.id} active={form.cat === cat.name} onClick={() => set("cat", cat.name)}>
@@ -2498,7 +2544,12 @@ function ItemRow({ item, ctx, proposed }: { item: PriceItem; ctx: Ctx; proposed?
   const [busy, setBusy] = useState(false);
   const [approving, setApproving] = useState(false);
   const [approveType, setApproveType] = useState(item.type);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const canModerate = proposed && ctx.role === "organizer";
+  const canDelete = !proposed && ctx.role === "organizer";
+  const venueBadge = item.source_place_id ? (
+    <span className="badge-pin"><Icon name="pin" size={12} stroke={2.2} />{ctx.t("venue_badge")}</span>
+  ) : null;
 
   const organizerTypes = [
     { key: "common", labelKey: "type_common", c: "blue" as StatusColor },
@@ -2526,6 +2577,19 @@ function ItemRow({ item, ctx, proposed }: { item: PriceItem; ctx: Ctx; proposed?
       ctx.toast("Товар отклонён");
     } catch (err) {
       ctx.toast(getErrorText(err, "Не удалось отклонить товар"), "x");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setBusy(true);
+    try {
+      await ctx.deleteItem(item.id);
+      ctx.toast("Товар удалён", "trash");
+    } catch (err) {
+      ctx.toast(getErrorText(err, "Не удалось удалить товар"), "x");
+      setConfirmDelete(false);
     } finally {
       setBusy(false);
     }
@@ -2565,7 +2629,10 @@ function ItemRow({ item, ctx, proposed }: { item: PriceItem; ctx: Ctx; proposed?
       <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {type && <span className="badge-dot" style={{ background: `var(--st-${type.c})`, width: 9, height: 9, flexShrink: 0 }} />}
-          <span className="lrow-title" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+          <div className="lrow-titles lrow-titles-inline">
+            <span className="lrow-title">{item.name}</span>
+            {venueBadge}
+          </div>
           <span className="lrow-amt num">{money(item.price * item.qty)}</span>
         </div>
         <span className="lrow-sub" style={{ paddingLeft: type ? 17 : 0 }}>{item.qty} {item.unit} · {item.by}</span>
@@ -2581,14 +2648,38 @@ function ItemRow({ item, ctx, proposed }: { item: PriceItem; ctx: Ctx; proposed?
     );
   }
 
+  if (canDelete && confirmDelete) {
+    return (
+      <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Удалить «{item.name}»?</div>
+        <div className="row" style={{ gap: 8 }}>
+          <Btn full size="sm" variant="danger" disabled={busy} onClick={handleDelete}>
+            {busy ? ctx.t("loading") : ctx.t("delete")}
+          </Btn>
+          <Btn variant="secondary" size="sm" disabled={busy} onClick={() => setConfirmDelete(false)}>
+            {ctx.t("cancel")}
+          </Btn>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="lrow lrow-static">
       {type && <span className="badge-dot" style={{ background: `var(--st-${type.c})`, width: 9, height: 9 }} />}
       <div className="lrow-main">
-        <span className="lrow-title">{item.name}</span>
+        <div className="lrow-titles">
+          <span className="lrow-title">{item.name}</span>
+          {venueBadge}
+        </div>
         <span className="lrow-sub">{item.qty} {item.unit} · {item.by}</span>
       </div>
       <div className="lrow-amt num">{money(item.price * item.qty)}</div>
+      {canDelete && (
+        <button className="cat-del" type="button" onClick={() => setConfirmDelete(true)}>
+          <Icon name="trash" size={16} stroke={1.8} />
+        </button>
+      )}
     </div>
   );
 }
@@ -2619,8 +2710,21 @@ function StatBox({ label, value, c, icon }: { label: string; value: string | num
   return <div className="card stat-box"><b style={{ color: c ? `var(--st-${c})` : undefined }}>{icon && <Icon name={icon} size={15} />}{value}</b><span>{label}</span></div>;
 }
 
-function Field({ label, children, hint, error, optional }: { label: string; children: ReactNode; hint?: string; error?: string | null; optional?: string }) {
-  return <div className="field"><label>{label}{optional && <span> · {optional}</span>}</label>{children}{error ? <div className="field-error"><Icon name="warn" size={13} />{error}</div> : hint ? <div className="field-hint">{hint}</div> : null}</div>;
+function Field({ label, children, hint, error, optional, action }: { label: string; children: ReactNode; hint?: string; error?: string | null; optional?: string; action?: ReactNode }) {
+  return (
+    <div className="field">
+      {action ? (
+        <div className="field-label-row">
+          <label>{label}{optional && <span> · {optional}</span>}</label>
+          {action}
+        </div>
+      ) : (
+        <label>{label}{optional && <span> · {optional}</span>}</label>
+      )}
+      {children}
+      {error ? <div className="field-error"><Icon name="warn" size={13} />{error}</div> : hint ? <div className="field-hint">{hint}</div> : null}
+    </div>
+  );
 }
 
 function Input({ value, onChange, onFocus, placeholder, prefix, suffix, loading }: { value: string; onChange: (value: string) => void; onFocus?: () => void; placeholder?: string; prefix?: ReactNode; suffix?: string; loading?: boolean }) {

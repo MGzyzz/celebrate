@@ -11,7 +11,7 @@ import {
   UpdateParticipationSharePayload,
   updateParticipationStatus,
 } from "./api/events";
-import { approvePriceItem, createCategory, createFundraising, CreateFundraisingPayload, createPriceItem, CreatePriceItemPayload, deleteCategory, finalizeFundraising, rejectPriceItem, setFundraisingPlace } from "./api/fundraising";
+import { approvePriceItem, createCategory, createFundraising, CreateFundraisingPayload, createPriceItem, CreatePriceItemPayload, deleteCategory, deletePriceItem, finalizeFundraising, rejectPriceItem, setFundraisingPlace } from "./api/fundraising";
 import { createPlace, CreatePlacePayload, supportPlace } from "./api/places";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -79,6 +79,10 @@ export function App() {
     mutationFn: (id: string) => deleteCategory(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
   });
+  const deletePriceItemMutation = useMutation({
+    mutationFn: (id: string) => deletePriceItem(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
+  });
   const setFundraisingPlaceMutation = useMutation({
     mutationFn: (placeId: string) => setFundraisingPlace(placeId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bootstrap"] }),
@@ -115,6 +119,7 @@ export function App() {
       onCreateCategory={async (name) => { await createCategoryMutation.mutateAsync(name); }}
       isCreatingCategory={createCategoryMutation.isPending}
       onDeleteCategory={async (id) => { await deleteCategoryMutation.mutateAsync(id); }}
+      onDeleteItem={(id) => deletePriceItemMutation.mutateAsync(id)}
       onSetPlace={(placeId) => setFundraisingPlaceMutation.mutateAsync(placeId)}
       isSettingPlace={setFundraisingPlaceMutation.isPending}
     />

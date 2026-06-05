@@ -362,6 +362,13 @@ button.card {
   text-transform: uppercase;
 }
 
+.section-label-sub {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -422,6 +429,17 @@ button.card {
 .btn-ghost {
   color: var(--accent);
   background: transparent;
+}
+
+.btn-danger {
+  color: #ffffff;
+  background: var(--st-red);
+}
+
+.btn-disabled,
+.btn:disabled {
+  cursor: default;
+  opacity: 0.52;
 }
 
 .badge {
@@ -586,8 +604,48 @@ button.card {
 
 .lrow-title {
   display: block;
+  overflow: hidden;
   font-size: 15px;
   font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lrow-titles {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lrow-titles-inline {
+  flex: 1;
+}
+
+.lrow-titles .lrow-title {
+  min-width: 0;
+}
+
+.badge-pin {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  max-width: 88px;
+  padding: 3px 8px;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: var(--r-pill);
+}
+
+.badge-pin svg {
+  flex-shrink: 0;
 }
 
 .lrow-sub {
@@ -595,6 +653,117 @@ button.card {
   margin-top: 2px;
   color: var(--hint);
   font-size: 12.5px;
+}
+
+.venue-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 70px;
+  padding: 12px 14px;
+  background: transparent;
+}
+
+.venue-row + .venue-row::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 14px;
+  height: 0.5px;
+  background: var(--sep);
+  content: "";
+}
+
+.venue-row-on {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.venue-row-on + .venue-row::before,
+.venue-row + .venue-row-on::before {
+  background: transparent;
+}
+
+.venue-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.venue-name {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 15.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.venue-meta {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: var(--hint);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.venue-price {
+  flex-shrink: 0;
+}
+
+.venue-votes {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--st-red);
+  white-space: nowrap;
+}
+
+.venue-btn {
+  flex-shrink: 0;
+  width: min(148px, 48%);
+  border-radius: 11px;
+}
+
+.venue-btn-loading {
+  color: color-mix(in srgb, var(--accent) 62%, #ffffff);
+  cursor: default;
+  opacity: 0.78;
+}
+
+.venue-btn-loading:disabled {
+  opacity: 0.78;
+}
+
+.venue-btn .spinner {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  border-color: color-mix(in srgb, var(--accent) 18%, #ffffff);
+  border-top-color: var(--accent);
+}
+
+.venue-added {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: min(128px, 43%);
+  min-height: 38px;
+  padding: 8px 13px;
+  color: var(--st-green);
+  font-size: 14px;
+  font-weight: 750;
+  white-space: nowrap;
+  background: var(--st-green-bg);
+  border-radius: 11px;
 }
 
 .lrow-amt {
@@ -619,6 +788,31 @@ button.card {
   color: var(--text-2);
   font-size: 13px;
   font-weight: 650;
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.field-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: opacity var(--tap), transform var(--tap);
+}
+
+.field-add-btn:active {
+  opacity: 0.65;
+  transform: scale(0.9);
 }
 
 .field label span,
@@ -650,6 +844,10 @@ button.card {
 
 .input-wrap:focus-within {
   border-color: var(--accent);
+}
+
+.input-wrap.input-error {
+  border-color: var(--st-red);
 }
 
 .input {
@@ -691,6 +889,77 @@ button.card {
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
+}
+
+.cat-add {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.cat-add-btn {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border: 0;
+  border-radius: var(--r-input);
+  cursor: pointer;
+  transition: color var(--tap), background var(--tap), transform var(--tap), opacity var(--tap);
+}
+
+.cat-add-btn-on {
+  color: #ffffff;
+  background: var(--accent);
+}
+
+.cat-add-btn:active {
+  transform: scale(0.94);
+}
+
+.cat-add-btn-disabled,
+.cat-add-btn:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.cat-error {
+  margin-top: 7px;
+}
+
+.cat-dot {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+
+.cat-del {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: var(--hint);
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: color var(--tap), background var(--tap), opacity var(--tap);
+}
+
+.cat-del:active {
+  color: var(--st-red);
+  background: var(--st-red-bg);
+}
+
+.cat-del:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .stepper {
@@ -782,6 +1051,13 @@ button.card {
   margin-bottom: 10px;
   font-size: 18px;
   font-weight: 750;
+}
+
+.modal-text {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .toast {
@@ -1281,6 +1557,14 @@ button.card {
 
 .pill-info-soft {
   background: rgb(255 255 255 / 22%);
+}
+
+.pill-info-loading {
+  width: 80px;
+  pointer-events: none;
+  background: linear-gradient(100deg, var(--surface-3) 30%, var(--surface-2) 50%, var(--surface-3) 70%);
+  background-size: 200% 100%;
+  animation: shimmer 1.3s infinite;
 }
 
 .notice {

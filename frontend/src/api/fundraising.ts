@@ -58,6 +58,10 @@ export async function deleteCategory(id: string): Promise<void> {
   await apiRequest(`/fundraising/categories/${id}/`, { method: "DELETE" });
 }
 
+export async function deletePriceItem(id: string): Promise<void> {
+  await apiRequest(`/price-items/${id}/`, { method: "DELETE" });
+}
+
 export async function setFundraisingPlace(placeId: string): Promise<unknown> {
   return apiRequest("/fundraisings/current/set-place/", {
     method: "POST",
