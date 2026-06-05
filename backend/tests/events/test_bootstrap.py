@@ -167,3 +167,62 @@ def test_place_payload_photo_none_when_empty(group, event, organizer_user):
     )
     payload = BootstrapView._place_payload(place, 0, set())
     assert payload["photo"] is None
+
+
+@pytest.mark.django_db
+def test_item_payload_assigned_to_name(group, event, organizer_user):
+    from apps.fundraising.models import Fundraising, ItemCategory, PriceItem
+    from datetime import timedelta
+    from django.utils import timezone
+
+    fundraising = Fundraising.objects.create(
+        event=event,
+        title="Fund",
+        target_amount=100000,
+        deadline=timezone.now() + timedelta(days=10),
+        status=Fundraising.Status.ACTIVE,
+    )
+    category = ItemCategory.objects.create(group=group, name="Food")
+    item = PriceItem.objects.create(
+        fundraising=fundraising,
+        author=organizer_user,
+        category=category,
+        title="Пиццы",
+        quantity=2,
+        unit="шт",
+        unit_price=3000,
+        item_type=PriceItem.ItemType.INDIVIDUAL,
+        assigned_to=organizer_user,
+        status=PriceItem.Status.APPROVED,
+    )
+    payload = BootstrapView._item_payload(item)
+    assert payload["assigned_to"] == organizer_user.first_name
+
+
+@pytest.mark.django_db
+def test_item_payload_assigned_to_null_when_not_set(group, event, organizer_user):
+    from apps.fundraising.models import Fundraising, ItemCategory, PriceItem
+    from datetime import timedelta
+    from django.utils import timezone
+
+    fundraising = Fundraising.objects.create(
+        event=event,
+        title="Fund",
+        target_amount=100000,
+        deadline=timezone.now() + timedelta(days=10),
+        status=Fundraising.Status.ACTIVE,
+    )
+    category = ItemCategory.objects.create(group=group, name="Food")
+    item = PriceItem.objects.create(
+        fundraising=fundraising,
+        author=organizer_user,
+        category=category,
+        title="Торт",
+        quantity=1,
+        unit="шт",
+        unit_price=10000,
+        item_type=PriceItem.ItemType.COMMON,
+        status=PriceItem.Status.APPROVED,
+    )
+    payload = BootstrapView._item_payload(item)
+    assert payload["assigned_to"] is None
