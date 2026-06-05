@@ -47,16 +47,16 @@ def test_organizer_adds_place_creates_price_item(monkeypatch, organizer_user, fu
     client = _client(monkeypatch, organizer_user)
     resp = client.post(URL, {"place_id": place.pk}, format="json")
     assert resp.status_code == 201
-    assert resp.data["title"] == "Лофт Высота"
+    assert resp.data["title"] == "Аренда — Лофт Высота"
     assert resp.data["unit_price"] == 220000
-    assert resp.data["status"] == PriceItem.Status.PROPOSED
+    assert resp.data["status"] == PriceItem.Status.APPROVED
     item = PriceItem.objects.get(source_place=place)
-    assert item.title == "Лофт Высота"
+    assert item.title == "Аренда — Лофт Высота"
     assert item.unit_price == 220000
     assert item.quantity == 1
     assert item.unit == "аренда"
     assert item.item_type == PriceItem.ItemType.COMMON
-    assert item.status == PriceItem.Status.PROPOSED
+    assert item.status == PriceItem.Status.APPROVED
     assert item.fundraising == fundraising
 
 
@@ -82,7 +82,7 @@ def test_adding_second_place_replaces_first(monkeypatch, organizer_user, fundrai
     client = _client(monkeypatch, organizer_user)
     resp = client.post(URL, {"place_id": place.pk}, format="json")
     assert resp.status_code == 201
-    assert resp.data["title"] == "Лофт Высота"
+    assert resp.data["title"] == "Аренда — Лофт Высота"
     assert not PriceItem.objects.filter(pk=old_item.pk).exists()
     assert PriceItem.objects.filter(source_place=place).exists()
 

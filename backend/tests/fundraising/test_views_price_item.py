@@ -3,6 +3,7 @@ from unittest.mock import patch
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.test import APIClient
 
+from apps.fundraising.models import PriceItem
 from conftest import make_participant
 
 FAKE_INIT = "fake-init-data"
@@ -49,3 +50,44 @@ def test_price_item_validation_error_returns_400(monkeypatch, group, event, fund
 
     assert resp.status_code == 400
     assert "Budget exceeded." in resp.data["detail"]
+
+
+@pytest.mark.django_db
+def test_organizer_item_auto_approved(monkeypatch, organizer_user, group, event, fundraising, category):
+    """Items created by an organizer must be immediately approved, not proposed."""
+    client = _client(monkeypatch, organizer_user)
+    resp = client.post(
+        "/api/price-items/current/",
+        {
+            "title": "Организаторский товар",
+            "category": "General",
+            "quantity": 1,
+            "unit": "шт",
+            "unitPrice": 5000,
+            "itemType": "common",
+        },
+        format="json",
+    )
+    assert resp.status_code == 201
+    assert resp.data["status"] == PriceItem.Status.APPROVED
+
+
+@pytest.mark.django_db
+def test_participant_item_stays_proposed(monkeypatch, group, event, fundraising, category):
+    """Items created by a participant must remain in proposed state."""
+    user = make_participant(group, event, 9002, "Bob")
+    client = _client(monkeypatch, user)
+    resp = client.post(
+        "/api/price-items/current/",
+        {
+            "title": "Участнический товар",
+            "category": "General",
+            "quantity": 1,
+            "unit": "шт",
+            "unitPrice": 3000,
+            "itemType": "common",
+        },
+        format="json",
+    )
+    assert resp.status_code == 201
+    assert resp.data["status"] == PriceItem.Status.PROPOSED

@@ -128,6 +128,9 @@ class CurrentPriceItemCreateView(views.APIView):
         if item_type not in PriceItem.ItemType.values:
             return response.Response({"detail": "Некорректный тип товара."}, status=status.HTTP_400_BAD_REQUEST)
 
+        organizer_roles = {Membership.Role.ORGANIZER, Membership.Role.ADMIN}
+        item_status = PriceItem.Status.APPROVED if membership.role in organizer_roles else PriceItem.Status.PROPOSED
+
         category, _ = ItemCategory.objects.get_or_create(group=membership.group, name=category_name)
         try:
             item = PriceItem.objects.create(
@@ -139,7 +142,7 @@ class CurrentPriceItemCreateView(views.APIView):
                 unit=unit,
                 unit_price=unit_price,
                 item_type=item_type,
-                status=PriceItem.Status.PROPOSED,
+                status=item_status,
                 comment=str(request.data.get("comment", "")).strip(),
                 store_url=str(request.data.get("storeUrl", "")).strip(),
             )
@@ -186,12 +189,12 @@ class SetFundraisingPlaceView(views.APIView):
             fundraising=fundraising,
             author=user,
             category=category,
-            title=place.title,
+            title=f"Аренда — {place.title}",
             quantity=1,
             unit="аренда",
             unit_price=place.estimated_price,
             item_type=PriceItem.ItemType.COMMON,
-            status=PriceItem.Status.PROPOSED,
+            status=PriceItem.Status.APPROVED,
             source_place=place,
         )
         return response.Response(PriceItemSerializer(item).data, status=status.HTTP_201_CREATED)
@@ -352,6 +355,23 @@ class ApprovePriceItemView(views.APIView):
 
 class RejectPriceItemView(PriceItemStatusView):
     _new_status = PriceItem.Status.REJECTED
+
+
+class DeletePriceItemView(views.APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def delete(self, request, pk):
+        user = _telegram_user(request)
+        membership = _require_organizer(user)
+        try:
+            item = PriceItem.objects.select_related("fundraising__event__group").get(pk=pk)
+        except PriceItem.DoesNotExist:
+            return response.Response({"detail": "Товар не найден."}, status=status.HTTP_404_NOT_FOUND)
+        if item.fundraising.event.group_id != membership.group_id:
+            raise exceptions.PermissionDenied("Нельзя удалять товары другой группы.")
+        item.delete()
+        return response.Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class PriceItemSupportViewSet(viewsets.ModelViewSet):

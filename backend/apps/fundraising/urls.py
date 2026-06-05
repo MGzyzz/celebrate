@@ -7,6 +7,7 @@ from apps.fundraising.views import (
     CurrentFundraisingCreateView,
     CurrentFundraisingFinalizeView,
     CurrentPriceItemCreateView,
+    DeletePriceItemView,
     RejectPriceItemView,
     SetFundraisingPlaceView,
 )
@@ -20,4 +21,5 @@ urlpatterns = [
     path("price-items/current/", CurrentPriceItemCreateView.as_view(), name="current-price-item-create"),
     path("price-items/<int:pk>/approve/", ApprovePriceItemView.as_view(), name="price-item-approve"),
     path("price-items/<int:pk>/reject/", RejectPriceItemView.as_view(), name="price-item-reject"),
+    path("price-items/<int:pk>/", DeletePriceItemView.as_view(), name="price-item-delete"),
 ]

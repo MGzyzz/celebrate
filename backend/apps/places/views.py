@@ -67,6 +67,9 @@ class CurrentPlaceCreateView(views.APIView):
         except (TypeError, ValueError):
             return response.Response({"detail": "Цена и вместимость должны быть целыми числами."}, status=status.HTTP_400_BAD_REQUEST)
 
+        if estimated_price <= 0:
+            return response.Response({"detail": "Укажите стоимость аренды."}, status=status.HTTP_400_BAD_REQUEST)
+
         latitude, latitude_error = _parse_coordinate(request.data.get("latitude"), "latitude")
         longitude, longitude_error = _parse_coordinate(request.data.get("longitude"), "longitude")
         if latitude_error or longitude_error:

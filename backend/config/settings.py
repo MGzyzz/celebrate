@@ -16,8 +16,10 @@ if env_file.exists():
     environ.Env.read_env(env_file)
 
 SECRET_KEY = env("SECRET_KEY", default="dev-only-change-me")
-DEBUG = env("DEBUG")
+DEBUG = True
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
+if DEBUG:
+    ALLOWED_HOSTS += ["localhost", "127.0.0.1", ".ngrok-free.app", ".ngrok.io"]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
