@@ -293,7 +293,3 @@ class BootstrapView(APIView):
             "paid": invoice.status == Invoice.Status.PAID,
             "individualItems": [],
         }
-
-
-# Alias used by tests and external callers
-BootstrapBuilder = BootstrapView

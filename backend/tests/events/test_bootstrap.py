@@ -2,6 +2,14 @@ import pytest
 from datetime import date
 
 from apps.events.bootstrap import BootstrapView, _ru_date
+from django.test.utils import CaptureQueriesContext
+from django.db import connection
+
+from apps.accounts.models import Membership, TelegramUser
+from apps.events.models import Event, Participation
+from apps.fundraising.models import Fundraising, Invoice, PriceItem
+from apps.places.models import PlaceIdea, PlaceVote
+from conftest import make_participant
 
 
 # ── Task 3: dateLabel tests ───────────────────────────────────────────────────
@@ -19,15 +27,6 @@ def test_ru_date_december():
 
 
 # ── Task 4: N+1 tests ────────────────────────────────────────────────────────
-
-from django.test.utils import CaptureQueriesContext
-from django.db import connection
-
-from apps.accounts.models import Membership, TelegramUser
-from apps.events.models import Event, Participation
-from apps.fundraising.models import Fundraising, Invoice
-from apps.places.models import PlaceIdea, PlaceVote
-from conftest import make_participant
 
 
 def _make_place(event, author, idx):
@@ -104,15 +103,13 @@ def test_me_payload_maps_existing_backend_status(group, event):
 
 
 @pytest.mark.django_db
-def test_item_payload_includes_source_place_id(group, event, fundraising, category, organizer_user):
-    from apps.places.models import PlaceIdea
+def test_item_payload_includes_source_place_id(group, event, fundraising, category):
     place = PlaceIdea.objects.create(
         event=event,
         title="Test Place",
         estimated_price=100000,
         status=PlaceIdea.Status.PROPOSED,
     )
-    from apps.fundraising.models import PriceItem
     item = PriceItem.objects.create(
         fundraising=fundraising,
         category=category,
@@ -124,14 +121,12 @@ def test_item_payload_includes_source_place_id(group, event, fundraising, catego
         status=PriceItem.Status.PROPOSED,
         source_place=place,
     )
-    from apps.events.bootstrap import BootstrapBuilder
-    payload = BootstrapBuilder._item_payload(item)
+    payload = BootstrapView._item_payload(item)
     assert payload["source_place_id"] == str(place.pk)
 
 
 @pytest.mark.django_db
-def test_item_payload_source_place_id_none_when_not_set(fundraising, category, organizer_user):
-    from apps.fundraising.models import PriceItem
+def test_item_payload_source_place_id_none_when_not_set(fundraising, category):
     item = PriceItem.objects.create(
         fundraising=fundraising,
         category=category,
@@ -142,6 +137,5 @@ def test_item_payload_source_place_id_none_when_not_set(fundraising, category, o
         item_type=PriceItem.ItemType.COMMON,
         status=PriceItem.Status.PROPOSED,
     )
-    from apps.events.bootstrap import BootstrapBuilder
-    payload = BootstrapBuilder._item_payload(item)
+    payload = BootstrapView._item_payload(item)
     assert payload["source_place_id"] is None
