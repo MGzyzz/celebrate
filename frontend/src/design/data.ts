@@ -52,6 +52,7 @@ export const data = {
       cons: ["Лимит по шуму после 23:00"],
       note: "Были на дне рождения - место огонь, хозяин отвечает быстро.",
       author: "Дана",
+      photo: null as string | null,
     },
     {
       id: "p2",

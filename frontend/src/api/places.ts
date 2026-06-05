@@ -11,6 +11,7 @@ export type CreatePlacePayload = {
   description?: string;
   amenities: string[];
   authorComment?: string;
+  photoUrl?: string;
 };
 
 export async function createPlace(payload: CreatePlacePayload) {

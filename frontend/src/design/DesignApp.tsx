@@ -394,7 +394,7 @@ type Ctx = {
   isCreatingCollection: boolean;
   createItem: (payload: { title: string; category: string; quantity: number; unit: string; unitPrice: number; itemType: string; comment?: string; storeUrl?: string }) => Promise<unknown>;
   isCreatingItem: boolean;
-  createPlace: (payload: { title: string; address: string; yandexUri?: string; latitude?: number; longitude?: number; estimatedPrice: number; capacity: number; description?: string; amenities: string[]; authorComment?: string }) => Promise<unknown>;
+  createPlace: (payload: { title: string; address: string; yandexUri?: string; latitude?: number; longitude?: number; estimatedPrice: number; capacity: number; description?: string; amenities: string[]; authorComment?: string; photoUrl?: string }) => Promise<unknown>;
   isCreatingPlace: boolean;
   supportPlace: (placeId: string) => Promise<unknown>;
   joinGroup: (code: string) => Promise<unknown>;
@@ -533,7 +533,7 @@ type DesignAppProps = {
   isCreatingCollection?: boolean;
   onCreateItem?: (payload: { title: string; category: string; quantity: number; unit: string; unitPrice: number; itemType: string; comment?: string; storeUrl?: string }) => Promise<unknown>;
   isCreatingItem?: boolean;
-  onCreatePlace?: (payload: { title: string; address: string; yandexUri?: string; latitude?: number; longitude?: number; estimatedPrice: number; capacity: number; description?: string; amenities: string[]; authorComment?: string }) => Promise<unknown>;
+  onCreatePlace?: (payload: { title: string; address: string; yandexUri?: string; latitude?: number; longitude?: number; estimatedPrice: number; capacity: number; description?: string; amenities: string[]; authorComment?: string; photoUrl?: string }) => Promise<unknown>;
   isCreatingPlace?: boolean;
   onSupportPlace?: (placeId: string) => Promise<unknown>;
   onJoinGroup?: (code: string) => Promise<unknown>;
