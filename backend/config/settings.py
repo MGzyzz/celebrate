@@ -16,7 +16,7 @@ if env_file.exists():
     environ.Env.read_env(env_file)
 
 SECRET_KEY = env("SECRET_KEY", default="dev-only-change-me")
-DEBUG = True
+DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 if DEBUG:
     ALLOWED_HOSTS += ["localhost", "127.0.0.1", ".ngrok-free.app", ".ngrok.io"]
@@ -40,6 +40,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
