@@ -1,6 +1,8 @@
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import URLValidator
 from django.shortcuts import get_object_or_404
 from rest_framework import exceptions, response, status, views
 
@@ -61,6 +63,14 @@ class CurrentPlaceCreateView(views.APIView):
             return response.Response({"detail": "Укажите адрес места."}, status=status.HTTP_400_BAD_REQUEST)
         yandex_uri = str(request.data.get("yandexUri", "")).strip()
         photo_url = str(request.data.get("photoUrl", "")).strip()
+        if photo_url:
+            try:
+                URLValidator()(photo_url)
+            except DjangoValidationError:
+                return response.Response(
+                    {"detail": "Укажите корректную ссылку на фото."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         try:
             estimated_price = int(request.data.get("estimatedPrice", 0) or 0)

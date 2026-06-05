@@ -2,6 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Membership, TelegramUser
+from apps.places.models import PlaceIdea
 
 FAKE_INIT = "fake-init-data"
 URL = "/api/places/current/"
@@ -69,7 +70,7 @@ def test_place_zero_price_rejected(monkeypatch, group, event):
 
 @pytest.mark.django_db
 def test_place_photo_url_saved(monkeypatch, group, event):
-    from apps.places.models import PlaceIdea
+    """A valid photo URL is persisted on the created PlaceIdea."""
     user = TelegramUser.objects.create(telegram_id=7003, first_name="User3")
     Membership.objects.create(user=user, group=group, role=Membership.Role.PARTICIPANT)
     client = _client(monkeypatch, user)
@@ -92,7 +93,7 @@ def test_place_photo_url_saved(monkeypatch, group, event):
 
 @pytest.mark.django_db
 def test_place_photo_url_optional(monkeypatch, group, event):
-    from apps.places.models import PlaceIdea
+    """Omitting photoUrl is allowed; the field defaults to an empty string."""
     user = TelegramUser.objects.create(telegram_id=7004, first_name="User4")
     Membership.objects.create(user=user, group=group, role=Membership.Role.PARTICIPANT)
     client = _client(monkeypatch, user)
@@ -110,3 +111,25 @@ def test_place_photo_url_optional(monkeypatch, group, event):
     assert resp.status_code == 201
     place = PlaceIdea.objects.get(title="Лофт без фото")
     assert place.photo_url == ""
+
+
+@pytest.mark.django_db
+def test_place_invalid_photo_url_rejected(monkeypatch, group, event):
+    """Providing a non-URL string for photoUrl must return 400."""
+    user = TelegramUser.objects.create(telegram_id=7005, first_name="User5")
+    Membership.objects.create(user=user, group=group, role=Membership.Role.PARTICIPANT)
+    client = _client(monkeypatch, user)
+    resp = client.post(
+        URL,
+        {
+            "title": "Лофт с плохим фото",
+            "address": "Алматы, Достык 5",
+            "estimatedPrice": 150000,
+            "latitude": "43.2",
+            "longitude": "76.9",
+            "photoUrl": "not-a-url",
+        },
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "фото" in resp.data["detail"].lower()
