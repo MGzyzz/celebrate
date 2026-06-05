@@ -183,7 +183,7 @@ export const data = {
     },
   ],
   items: [
-    { id: "i1", name: "Аренда лофта «Высота»", cat: "other", type: "common", qty: 1, unit: "шт", price: 220000, status: "approved" as const, approved: true, by: "Дана", source_place_id: null as string | null },
+    { id: "i1", name: "Аренда лофта «Высота»", cat: "other", type: "common", qty: 1, unit: "шт", price: 220000, status: "approved" as const, approved: true, by: "Дана", source_place_id: null as string | null, assigned_to: null as string | null },
     { id: "i2", name: "Кейтеринг - горячее", cat: "food", type: "common", qty: 60, unit: "порц", price: 4200, status: "approved" as const, approved: true, by: "Алмас" },
     { id: "i3", name: "Кола", cat: "drinks", type: "common", qty: 24, unit: "бут", price: 700, status: "approved" as const, approved: true, by: "Тимур", support: 3 },
     { id: "i4", name: "Сок", cat: "drinks", type: "common", qty: 20, unit: "бут", price: 850, status: "approved" as const, approved: true, by: "Дана" },
