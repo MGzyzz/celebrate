@@ -97,12 +97,22 @@ def _send_one(token: str, chat_id, text: str, reply_markup: dict) -> None:
 
 def _send_all(token: str, fundraising, invoices) -> None:
     from apps.fundraising.models import PriceItem
-    approved_items = list(
-        fundraising.items.filter(status=PriceItem.Status.APPROVED).order_by("item_type", "title")
+    shared_items = list(
+        fundraising.items.filter(
+            status=PriceItem.Status.APPROVED,
+            item_type__in=[PriceItem.ItemType.COMMON, PriceItem.ItemType.ALCOHOL],
+        ).order_by("item_type", "title")
+    )
+    individual_items = list(
+        fundraising.items.filter(
+            status=PriceItem.Status.APPROVED,
+            item_type=PriceItem.ItemType.INDIVIDUAL,
+        ).order_by("title")
     )
     for invoice in invoices:
         try:
-            text, reply_markup = _build_message(fundraising, invoice, approved_items)
+            my_individual = [it for it in individual_items if it.assigned_to_id == invoice.user_id]
+            text, reply_markup = _build_message(fundraising, invoice, shared_items + my_individual)
             _send_one(token, invoice.user.telegram_id, text, reply_markup)
         except Exception:
             pass
