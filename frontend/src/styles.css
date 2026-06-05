@@ -652,6 +652,7 @@ button.card {
   font-size: 11px;
   color: var(--hint);
   margin-left: 4px;
+  white-space: nowrap;
 }
 
 .lrow-sub {

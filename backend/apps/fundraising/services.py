@@ -38,6 +38,16 @@ def finalize_fundraising(fundraising: Fundraising) -> list[Invoice]:
     alcohol_share = alcohol_total // len(alcohol_participant_pks) if alcohol_participant_pks else 0
     alcohol_remainder = alcohol_total % len(alcohol_participant_pks) if alcohol_participant_pks else 0
 
+    from collections import defaultdict
+    individual_items_qs = fundraising.items.filter(
+        status=PriceItem.Status.APPROVED,
+        item_type=PriceItem.ItemType.INDIVIDUAL,
+    ).values("assigned_to_id", "quantity", "unit_price")
+    individual_totals: dict[int, int] = defaultdict(int)
+    for row in individual_items_qs:
+        if row["assigned_to_id"] is not None:
+            individual_totals[row["assigned_to_id"]] += row["quantity"] * row["unit_price"]
+
     invoices = []
     first_regular_done = False
     first_alcohol_done = False
@@ -50,15 +60,7 @@ def finalize_fundraising(fundraising: Fundraising) -> list[Invoice]:
 
         common_amount = common_share + c_extra
         alcohol_amount = (alcohol_share + a_extra) if is_alcohol else 0
-        individual_items_total = sum(
-            item.total_price
-            for item in fundraising.items.filter(
-                status=PriceItem.Status.APPROVED,
-                item_type=PriceItem.ItemType.INDIVIDUAL,
-                assigned_to=participation.user,
-            )
-        )
-        individual_amount = participation.custom_share_amount + individual_items_total
+        individual_amount = participation.custom_share_amount + individual_totals.get(participation.user_id, 0)
         amount = common_amount + alcohol_amount + individual_amount
         rounding_delta = c_extra + a_extra
 

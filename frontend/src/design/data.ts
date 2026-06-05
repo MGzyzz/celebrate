@@ -195,7 +195,7 @@ export const data = {
     { id: "i10", name: "Бенгальские огни", cat: "decor", type: "common", qty: 30, unit: "шт", price: 300, status: "proposed" as const, approved: false, by: "Тимур" },
     { id: "i11", name: "Фотограф", cat: "other", type: "common", qty: 1, unit: "услуга", price: 80000, status: "proposed" as const, approved: false, by: "Дана" },
     { id: "i12", name: "Вино красное", cat: "drinks", type: "alcohol", qty: 6, unit: "бут", price: 5500, status: "proposed" as const, approved: false, by: "Тимур" },
-    { id: "i13", name: "Именная футболка", cat: "other", type: "individual", qty: 1, unit: "шт", price: 3500, status: "proposed" as const, approved: false, by: "Алмас" },
+    { id: "i13", name: "Именная футболка", cat: "other", type: "individual", qty: 1, unit: "шт", price: 3500, status: "proposed" as const, approved: false, by: "Алмас", assigned_to: "Алмас" as string | null },
   ],
   participants: [
     { id: "u1", name: "Алмас Серіков", participation: "maybe", payCat: "regular", paid: false, invoice: 0, customShareAmount: 0 },
