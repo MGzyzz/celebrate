@@ -1,6 +1,7 @@
 import pytest
 from rest_framework.test import APIClient
 
+from apps.accounts.models import TelegramUser
 from apps.fundraising.models import Fundraising, ItemCategory, PriceItem
 from apps.events.models import Participation
 from conftest import make_participant
@@ -108,3 +109,61 @@ def test_finalize_participant_cannot_finalize(monkeypatch, group, event, fundrai
     resp = client.post(URL)
 
     assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_finalize_individual_item_charged_to_assigned_participant(
+    monkeypatch, organizer_user, group, event, fundraising, approved_item, category
+):
+    """Individual item (assigned to Alice) adds its total to Alice's invoice only."""
+    alice = make_participant(group, event, 5010, "Alice")
+    bob = make_participant(group, event, 5011, "Bob")
+    # Individual item assigned to Alice (organizer approves it)
+    PriceItem.objects.create(
+        fundraising=fundraising,
+        author=alice,
+        category=category,
+        title="5 пицц для Алисы",
+        quantity=5,
+        unit="шт",
+        unit_price=2000,
+        item_type=PriceItem.ItemType.INDIVIDUAL,
+        assigned_to=alice,
+        status=PriceItem.Status.APPROVED,
+    )
+
+    client = _client(monkeypatch, organizer_user)
+    resp = client.post(URL)
+
+    assert resp.status_code == 200
+    invoices = {inv["userId"]: inv for inv in resp.json()}
+    assert invoices[str(alice.id)]["individual"] == 10000  # 5 * 2000
+    assert invoices[str(bob.id)]["individual"] == 0
+
+
+@pytest.mark.django_db
+def test_finalize_individual_item_unassigned_participant_not_affected(
+    monkeypatch, organizer_user, group, event, fundraising, approved_item, category
+):
+    """Individual item for a non-participating user has no effect on any invoice."""
+    participant = make_participant(group, event, 5012, "Charlie")
+    non_participant = TelegramUser.objects.create(telegram_id=5013, first_name="Ghost")
+    PriceItem.objects.create(
+        fundraising=fundraising,
+        author=non_participant,
+        category=category,
+        title="Товар призрака",
+        quantity=1,
+        unit="шт",
+        unit_price=5000,
+        item_type=PriceItem.ItemType.INDIVIDUAL,
+        assigned_to=non_participant,
+        status=PriceItem.Status.APPROVED,
+    )
+
+    client = _client(monkeypatch, organizer_user)
+    resp = client.post(URL)
+
+    assert resp.status_code == 200
+    invoices = {inv["userId"]: inv for inv in resp.json()}
+    assert invoices[str(participant.id)]["individual"] == 0

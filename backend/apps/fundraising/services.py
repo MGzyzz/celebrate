@@ -50,7 +50,15 @@ def finalize_fundraising(fundraising: Fundraising) -> list[Invoice]:
 
         common_amount = common_share + c_extra
         alcohol_amount = (alcohol_share + a_extra) if is_alcohol else 0
-        individual_amount = participation.custom_share_amount
+        individual_items_total = sum(
+            item.total_price
+            for item in fundraising.items.filter(
+                status=PriceItem.Status.APPROVED,
+                item_type=PriceItem.ItemType.INDIVIDUAL,
+                assigned_to=participation.user,
+            )
+        )
+        individual_amount = participation.custom_share_amount + individual_items_total
         amount = common_amount + alcohol_amount + individual_amount
         rounding_delta = c_extra + a_extra
 
