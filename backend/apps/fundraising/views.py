@@ -17,6 +17,7 @@ from apps.fundraising.serializers import (
     PriceItemSupportSerializer,
 )
 from apps.fundraising.services import finalize_fundraising, find_duplicate_items
+from apps.places.models import PlaceIdea
 
 
 def _telegram_user(request):
@@ -147,6 +148,52 @@ class CurrentPriceItemCreateView(views.APIView):
                 {"detail": "; ".join(exc.messages)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        return response.Response(PriceItemSerializer(item).data, status=status.HTTP_201_CREATED)
+
+
+class SetFundraisingPlaceView(views.APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        user = _telegram_user(request)
+        membership = _require_organizer(user)
+
+        fundraising = Fundraising.objects.filter(
+            event__group=membership.group,
+            status__in=[Fundraising.Status.ACTIVE, Fundraising.Status.DRAFT],
+        ).order_by("-created_at").first()
+        if not fundraising:
+            return response.Response({"detail": "Сначала создайте активный сбор."}, status=status.HTTP_400_BAD_REQUEST)
+
+        event = fundraising.event
+
+        place_id = request.data.get("place_id")
+        if not place_id:
+            return response.Response({"detail": "Укажите place_id."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            place = PlaceIdea.objects.get(pk=place_id, event=event)
+        except PlaceIdea.DoesNotExist:
+            return response.Response({"detail": "Место не найдено."}, status=status.HTTP_404_NOT_FOUND)
+
+        fundraising.items.filter(source_place__isnull=False).delete()
+
+        category, _ = ItemCategory.objects.get_or_create(
+            group=membership.group, name="Место проведения"
+        )
+        item = PriceItem.objects.create(
+            fundraising=fundraising,
+            author=user,
+            category=category,
+            title=place.title,
+            quantity=1,
+            unit="аренда",
+            unit_price=place.estimated_price,
+            item_type=PriceItem.ItemType.COMMON,
+            status=PriceItem.Status.PROPOSED,
+            source_place=place,
+        )
         return response.Response(PriceItemSerializer(item).data, status=status.HTTP_201_CREATED)
 
 

@@ -8,10 +8,12 @@ from apps.fundraising.views import (
     CurrentFundraisingFinalizeView,
     CurrentPriceItemCreateView,
     RejectPriceItemView,
+    SetFundraisingPlaceView,
 )
 
 urlpatterns = [
     path("fundraisings/current/finalize/", CurrentFundraisingFinalizeView.as_view(), name="current-fundraising-finalize"),
+    path("fundraisings/current/set-place/", SetFundraisingPlaceView.as_view(), name="current-fundraising-set-place"),
     path("fundraisings/current/", CurrentFundraisingCreateView.as_view(), name="current-fundraising-create"),
     path("fundraising/categories/<int:pk>/", CategoryDeleteView.as_view(), name="category-delete"),
     path("fundraising/categories/", CategoryListCreateView.as_view(), name="category-list-create"),
