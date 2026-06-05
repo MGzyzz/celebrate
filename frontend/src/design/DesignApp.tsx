@@ -1360,7 +1360,7 @@ function PlaceScreen({ ctx, id }: { ctx: Ctx; id?: string }) {
 }
 
 function AddPlaceScreen({ ctx }: { ctx: Ctx }) {
-  const [form, setForm] = useState({ name: "", address: "", yandexUri: "", coords: null as null | { lat: number; lng: number }, price: "", capacity: "", desc: "", amen: [] as string[], note: "" });
+  const [form, setForm] = useState({ name: "", address: "", yandexUri: "", coords: null as null | { lat: number; lng: number }, price: "", capacity: "", desc: "", amen: [] as string[], note: "", photoUrl: "" });
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [focusedSuggest, setFocusedSuggest] = useState<"name" | "address" | null>(null);
   const [nameSuggestions, setNameSuggestions] = useState<YandexSuggestion[]>([]);
@@ -1483,6 +1483,7 @@ function AddPlaceScreen({ ctx }: { ctx: Ctx }) {
         description: form.desc.trim(),
         amenities: form.amen,
         authorComment: form.note.trim(),
+        photoUrl: form.photoUrl.trim() || undefined,
       };
       await ctx.createPlace(payload);
       ctx.toast(ctx.t("toast_saved"));
@@ -1499,7 +1500,13 @@ function AddPlaceScreen({ ctx }: { ctx: Ctx }) {
   return (
     <div className="scroll screen-anim">
       <div className="screen-pad gap12">
-        <div className="ph add-photo">+ добавить фото места</div>
+        <Field label="Ссылка на фото (необязательно)">
+          <Input
+            value={form.photoUrl}
+            onChange={(value) => set("photoUrl", value)}
+            placeholder="https://..."
+          />
+        </Field>
         <Field label={ctx.t("item_name")} error={errors.name}>
           <div className="suggest"><Input value={form.name} prefix={<Icon name="search" size={17} />} loading={nameSuggestLoading} onFocus={() => setFocusedSuggest("name")} onChange={(value) => { setForm((state) => ({ ...state, name: value, yandexUri: "", coords: null })); setErrors((state) => ({ ...state, name: null })); }} placeholder="Например, Dostyk Plaza" />
             {focusedSuggest === "name" && nameSuggestions.length > 0 && <SuggestList items={nameSuggestions} onSelect={applyNameSuggestion} powered={ctx.t("powered_geosuggest")} />}
