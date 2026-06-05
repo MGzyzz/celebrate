@@ -145,6 +145,7 @@ class CurrentPriceItemCreateView(views.APIView):
                 status=item_status,
                 comment=str(request.data.get("comment", "")).strip(),
                 store_url=str(request.data.get("storeUrl", "")).strip(),
+                assigned_to=user if item_type == PriceItem.ItemType.INDIVIDUAL else None,
             )
         except DjangoValidationError as exc:
             return response.Response(
