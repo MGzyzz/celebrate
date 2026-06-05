@@ -19,7 +19,7 @@ SECRET_KEY = env("SECRET_KEY", default="dev-only-change-me")
 DEBUG = True
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 if DEBUG:
-    ALLOWED_HOSTS += ["localhost", "127.0.0.1", ".ngrok-free.app", ".ngrok.io"]
+    ALLOWED_HOSTS += ["localhost", "127.0.0.1"]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
